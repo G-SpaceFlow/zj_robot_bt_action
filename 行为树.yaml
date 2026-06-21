@@ -1,0 +1,2033 @@
+---
+version: 1
+name: plate_workflow_tree_demo
+description: "料盘抓取放置行为树 - 全部关节角统一"
+
+tasks:
+  - id: task_000
+    name: plate_pick_task
+    label: 任务000：开门
+
+    locations:
+      - id: loc_001
+        name: pickup_station
+        label: 地点001：取料台
+
+        nav_pose:
+          x: 1.2
+          y: 0.35
+          yaw: 1.57
+
+        behaviors:
+          - id: behavior_001
+            name: approach_plate
+            label: 行为001：靠近门
+            description: 左右臂多点轨迹示例
+
+            actions:
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [0.7, 0, 0.1]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.5
+                  acc: 0.05
+                  t: 4.0
+                  is_async: false
+                  arm_type: 24
+
+
+              - id: detect_001
+                name: detect_target
+                label: 视觉识别：墙壁角度和二维码坐标
+                type: vision
+                key: "1-1-0-0"
+                trigger_value: 3
+                labels: ["wall"]
+                points: ["yaw_rad"]
+                optional: false
+
+
+              - id: rotate_002
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [0.7, 0.0, 0.1]               # 如腰部，按你的机器人维度填
+                joint_sources:
+                  - index: 0
+                    base_key: "1-1-0-0"
+                    point: "yaw_rad"
+                    motion_mode: 4
+                    optional: true
+                motion:
+                  v: 0.5
+                  acc: 0.05
+                  t: 4.0
+                  is_async: false
+                  arm_type: 24
+
+
+              - id: action_hand_001
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0,  0.0, 0.0, 0.0, 0.0, 0.0, 0.0]       # 拇指弯曲,拇指摆动,食指,中指,无名指,小指
+
+
+
+              - id: action_001
+                name: left_arm_three_point_joint_traj
+                label: 动作001：右臂三点关节轨迹
+                service: /zj_humanoid/upperlimb/movej_by_path/whole_body
+                motion:
+                  time: 12.0
+                  timestamp: []
+                  is_async: false
+                  arm_type: 2
+                path:
+                - - [-0.7, -1.175, 1.0835, -1.0769, -0.2203, 0.2589, 0.6207,]
+                - - [-1.4492, -1.575, 1.7835, -1.0769, -0.2203, 0.489, 0.8207]
+                - - [-1.6255, -1.3864, 1.7540, -1.5928, -0.2975, 0.9854, 0.6188]
+
+
+              - id: action_hand_001
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.6, 0.2, 0.1, 0.1, 0.1, 0.1,  0.6, 1., 0.8, 0.1, 0.1, 0.8]       # 拇指弯曲,拇指摆动,食指,中指,无名指,小指
+
+
+              - id: action_002
+                name: dual_arm_moveL_to_place
+                label: 动作011：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.2
+                  acc: 0.1
+                  is_async: false
+                # /yolo_vision/wall_angle 的 base_x/base_y/base_z 会缓存为 point=base
+                base_key: "1-1-0-0"
+                motion_mode: 3
+                points: ["base"]
+                relative_offset:
+                  right:  {dx: -0.12, dy: 0.07, dz: 0.12, ox: -0.20649, oy: -0.24389, oz: 0.68791, ow: 0.65165}
+                  # right:  {dx: -0.12, dy: 0.085, dz: 0.12}
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.3
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  right:  {dx: 0.00, dy: -0.00, dz: -0.05}
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.3
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  right:  {dx: -0.045, dy: -0.08, dz: 0.0, ox: -0.11033, oy: -0.29991, oz: 0.86966, ow: 0.37626}
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.3
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  right:  {dx: -0.01, dy: -0.04, dz: 0.0}
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.3
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  right:  {dx: -0.05, dy: 0.00, dz: 0.0}
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.3
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  right:  {dx: -0.00, dy: 0.01, dz: 0.0}
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.3
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  right:  {dx: 0.00, dy: -0.00, dz: 0.05}
+
+
+          - id: behavior_002
+            name: approach_plate
+            label: 行为001：靠近门
+            description: 左右臂多点轨迹示例
+
+            actions:
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.3
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  right:  {dx: 0.00, dy: -0.08, dz: 0.00}
+
+
+              - id: action_hand_001
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.6, 0.2, 0.1, 0.1, 0.1, 0.1,  0.2, 0.5, 0.2, 0.2, 0.2, 0.2]       # 拇指弯曲,拇指摆动,食指,中指,无名指,小指
+
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.3
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  right:  {dx: 0.00, dy: -0.00, dz: -0.02, ox: 0.019287, oy: -0.70208, oz: 0.17011, ow: 0.69120}
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.3
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  right:  {dx: 0.04, dy: 0.00, dz: 0.00}
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.3
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  right:  {dx: 0.00, dy: 0.035, dz: 0.00}
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.3
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  right:  {dx: -0.12, dy: 0.013, dz: 0.00}
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.3
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  right:  {dx: 0.04, dy: -0.08, dz: 0.00}
+
+
+              - id: action_hand_001
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.6, 0.2, 0.1, 0.1, 0.1, 0.1,  0.8, -0.2, 0.1, 0.1, 0.1, 0.1]       # 拇指弯曲,拇指摆动,食指,中指,无名指,小指
+
+
+              - id: action_hand_001
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.6, 0.2, 0.1, 0.1, 0.1, 0.1,  0.8, -0.2, 1.2, 1.2, 1.2, 1.2]       # 拇指弯曲,拇指摆动,食指,中指,无名指,小指
+
+
+
+              - id: action_001
+                name: left_arm_three_point_joint_traj
+                label: 动作001：左臂三点关节轨迹
+                service: /zj_humanoid/upperlimb/movej_by_path/whole_body
+                motion:
+                  time: 16.0
+                  timestamp: []
+                  is_async: false
+                  arm_type: 2
+                path:
+                - - [-0.8860, -1.5582, 1.5574, -0.8906, -1.6948, -0.4495, 0.2277]
+                - - [-0.8864, -1.5297, 1.5571, -0.8937, -1.6576, -0.4978, 0.8739]
+                - - [-0.8866, -1.2442, 1.5570, -1.2810, -1.2806, -0.4970, 0.7617]
+                - - [-0.7895, -0.6789, 1.4803, -1.0623, -1.0624, -0.4933, 0.3193]
+                - - [-0.7633, -0.9381, 1.3820, -1.2675, -1.0818, -0.3063, 0.3342]
+
+
+              - id: action_hand_001
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.6, 0.2, 0.1, 0.1, 0.1, 0.1,  0.8, -0.2, 0.7, 0.7, 0.7, 0.7]  
+
+
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [-0.9202, -0.7746, 1.2587, -1.0280, -1.0818, -0.3065, 0.2789]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.5
+                  acc: 0.05
+                  t: 2.0
+                  is_async: false
+                  arm_type: 2
+
+
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [-0.9954, -0.8367, 1.1299, -0.6604, -1.0824, -0.3073, 0.0337, 1.3, 0.0, 0.1]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.5
+                  acc: 0.05
+                  t: 4.0
+                  is_async: false
+                  arm_type: 26
+
+
+              - id: action_001
+                name: left_arm_three_point_joint_traj
+                label: 动作001：左臂三点关节轨迹
+                service: /zj_humanoid/upperlimb/movej_by_path/whole_body
+                motion:
+                  time: 8.0
+                  timestamp: []
+                  is_async: false
+                  arm_type: 2
+                path:
+                - - [0.1360, -1.0285, 0.2878, -1.2851, -0.5715, -0.3568, 0.3102]
+                - - [0.0000, -0.4363, -0.5236, 0.0000, 0.0000, 0.0000, 0.0000]
+
+
+
+  - id: task_001
+    name: plate_pick_task
+    label: 任务001：料盘抓取任务
+
+    locations:
+      - id: loc_001
+        name: pickup_station
+        label: 地点001：取料台
+
+        nav_pose:
+          x: 1.2
+          y: 0.35
+          yaw: 1.57
+
+        behaviors:
+          - id: behavior_000
+            name: approach_plate
+            label: 行为001：靠近料盘
+            description: 左右臂多点轨迹示例
+
+            actions:
+              - id: action_000
+                name: left_arm_three_point_joint_traj
+                label: 动作001：左臂三点关节轨迹
+                service: /zj_humanoid/upperlimb/movej_by_path/whole_body
+
+                motion:
+                  time: 10.0
+                  timestamp: []
+                  is_async: false
+                  arm_type: 31
+
+                path:
+                - - [0.8356, 0.0416, 0.4714, -1.0564, -0.0153, -1.0925, 0.0908]
+                  - [0.8356, -0.0416, -0.4714, -1.0564, 0.0153, -1.0925, -0.0908]
+                  - [0.0, 0.0, 0.0, 0.0, 0.05]
+                - - [0.0000, 0.4363, 0.5236, -0.0000, -0.0000, -0.0000, 0.0000]
+                  - [0.0000, -0.4363, -0.5236, 0.0000, 0.0000, 0.0000, 0.0000]
+                  - [0.0, 0.0, 0.0, 0.0, 0.03]
+
+
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [0.7, 0.5, 0.11]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.5
+                  acc: 0.05
+                  t: 4.0
+                  is_async: false
+                  arm_type: 24
+
+
+              - id: detect_003
+                name: detect_target
+                label: 视觉识别：墙壁角度
+                type: vision
+                key: "1-1-0-1"
+                trigger_value: 3
+                labels: ["wall"]
+                points: ["yaw_rad"]
+                optional: true
+
+
+              # - id: rotate_002
+              #   name: move waist
+              #   label: 转腰
+              #   service: "/zj_humanoid/upperlimb/movej/whole_body"
+              #   use_ik: false                          # 关键：关闭 IK
+              #   joints:                                # 直接提供目标关节角度
+              #     - [0.7, 0.5, 0.11]               # 如腰部，按你的机器人维度填
+              #   joint_sources:
+              #     - index: 0
+              #       base_key: "1-1-0-1"
+              #       point: "yaw_rad"
+              #       motion_mode: 4
+              #       optional: true
+              #   motion:
+              #     v: 0.5
+              #     acc: 0.05
+              #     t: 4.0
+              #     is_async: false
+              #     arm_type: 24
+
+
+              - id: detect_001
+                name: detect_target
+                label: 视觉识别：放置中心点
+                type: vision
+                key: "1-1-1-1"
+                trigger_value: 1
+                labels: ["tray"]
+                motion_mode: 2
+                points: ["center"]
+
+
+          - id: behavior_001
+            name: approach_plate
+            label: 行为001：靠近料盘
+            description: 左右臂多点轨迹示例
+
+            actions:
+              - id: action_000
+                name: left_arm_three_point_joint_traj
+                label: 动作001：左臂三点关节轨迹
+                service: /zj_humanoid/upperlimb/movej_by_path/whole_body
+
+                motion:
+                  time: 10.0
+                  timestamp: []
+                  is_async: false
+                  arm_type: 31
+
+                path:
+                - - [0.4356, 0.26, 0.554, -1.0564, -0.0153, -1.0925, 0.0908]
+                  - [0.8356, -0.0416, -0.4714, -1.0564, 0.0153, -1.0925, -0.0908]
+                  - [0.0, 0.0, 0.0, 0.5, 0.1]
+                - - [0.0239, 0.8857, 0.0202, -1.5279, 0.4527, 0.3615, 0.5496]
+                  - [0.0239, -0.8857, -0.0202, -1.5279, -0.4527, 0.3615, -0.5496]
+                  - [0.0, 0.0, -0.9, 0.5, 0.01]
+
+
+              - id: action_hand_001
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.6, 1.2, 0, 0.15, 0.15, 0.1,  0.6, 1.2, 0.0, 0.15, 0.15, 0.1]       # 拇指弯曲,拇指摆动,食指,中指,无名指,小指
+
+
+              - id: detect_002
+                name: detect_target
+                label: 视觉识别：夹取左右点
+                type: vision
+                key: "1-1-1-2"
+                trigger_value: 2
+                labels: ["tray"]
+                motion_mode: 1
+                points: ["left", "right", "center", "top"]
+                optional: true
+
+
+              - id: action_002
+                name: dual_arm_moveL_to_pick
+                label: 动作002：夹住
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用前面的视觉动作缓存，缓存缺失时回退到 YAML 静态位姿
+                base_key: "1-1-1-2"
+                motion_mode: 1
+                points: ["left", "right"]
+                fallback_to_yaml: true
+                # 再给出静态位姿（作为 fallback 或纯静态模式使用）
+                arm_poses:
+                  left_arm:
+                    pose:
+                      position: {x: 0.7269, y: 0.3442, z: 0.6655}
+                      orientation: {x: 0.1058, y: 0.1595, z: 0.0328, w: -0.9809}
+                  right_arm:
+                    pose:
+                      position: {x: 0.7269, y: -0.3442, z: 0.6655}
+                      orientation: {x: 0.0465, y: -0.1636, z: -0.0296, w: 0.9849}
+
+
+              - id: action_hand_001
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.6, 1.2, 0.14, 0.15, 0.15, 0.15,  0.6, 1.2, 0.14, 0.15, 0.15, 0.15] 
+
+
+              - id: action_003
+                name: dual_arm_moveL_to_place
+                label: 动作003：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.00, dy: 0.00, dz: 0.04}
+                  right: {dx: -0.00, dy: 0.00, dz: 0.04}
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作003：手臂两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.09, dy: 0.00, dz: -0.00}
+                  right: {dx: -0.09, dy: -0.00, dz: -0.00}
+
+
+              - id: action_005
+                name: dual_arm_moveL_to_place
+                label: 动作003：手臂两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.0, dy: 0.00, dz: -0.035}
+                  right: {dx: -0.0, dy: -0.00, dz: -0.035}
+
+
+              - id: action_006
+                name: dual_arm_moveL_to_place
+                label: 动作003：手臂两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.0, dy: 0.05, dz: 0.00}
+                  right: {dx: -0.0, dy: -0.05, dz: 0.00}
+
+
+              - id: action_007
+                name: dual_arm_moveL_to_place
+                label: 动作003：手臂两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: -0.0, dy: -0.00, dz: -0.033}
+                    right: {dx: -0.0, dy: -0.00, dz: -0.033}
+                  - left:  {dx: -0.0, dy: -0.00, dz: -0.034}
+                    right: {dx: -0.0, dy: -0.00, dz: -0.034}
+
+
+              - id: action_hand_002
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.6, 1.2, 0.06, 0.10, 0.14, 0.180,  0.6, 1.2, 0.06, 0.10, 0.14, 0.160]       # 拇指弯曲,拇指摆动,食指,中指,无名指,小指
+
+
+              - id: action_008
+                name: dual_arm_moveL_to_place
+                label: 动作007：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.06, dy: -0.079, dz: -0.00, ox: 0.045, oy: -0.275, oz: -0.030, ow: 0.960}
+                  right: {dx: -0.06, dy:  0.078, dz: -0.00, ox: 0.045, oy: 0.275, oz: -0.030, ow: -0.960}
+
+
+              - id: action_hand_003
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.6, 1.2, 0.1, 0.11, 0.16, 0.22,  0.6, 1.2, 0.09, 0.11, 0.16, 0.17]       # 拇指弯曲,拇指摆动,食指,中指,无名指,小指
+
+
+              - id: action_009
+                name: dual_arm_moveL_to_place
+                label: 动作008：前移
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: 0.00, dy: -0.00, dz: 0.02}
+                    right: {dx: 0.00, dy: -0.00, dz: 0.02}
+                  - left:  {dx: 0.00, dy: -0.00, dz: 0.01}
+                    right: {dx: 0.00, dy: -0.00, dz: 0.01}
+
+
+              - id: rotate_003
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [-0.9, 0.5, 0.15]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.05
+                  acc: 0.05
+                  t: 4.0
+                  is_async: false
+                  arm_type: 24
+
+
+              - id: action_009
+                name: dual_arm_moveL_to_place
+                label: 动作003：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.07, dy: 0.0, dz: 0.00}
+                  right: {dx: -0.07, dy: 0.0, dz: 0.00}
+
+
+          - id: behavior_002
+            name: approach_plate
+            label: 行为002：料盘放入机器
+            description: 左右臂多点轨迹示例
+            actions:
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [0.7, 0.5, 0.23]               # 如腰部，按你的机器人维度填
+                joint_sources:
+                  - index: 0
+                    base_key: "1-1-0-1"
+                    point: "yaw_rad"
+                    motion_mode: 4
+                    optional: true
+                motion:
+                  v: 0.5
+                  acc: 0.05
+                  t: 4.0
+                  is_async: false
+                  arm_type: 24
+
+
+              - id: action_002
+                name: dual_arm_moveL_to_place
+                label: 动作002：调整相对位姿
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                base_key: "1-1-1-1"
+                motion_mode: 2
+                points: ["center"]
+                relative_offset:
+                  - left:  {dx: -0.3, dy: 0.075, dz: 0.205}
+                    right: {dx: -0.3, dy: 0.075, dz: 0.205}
+                  - left:  {dx: -0.3, dy: 0.015, dz: 0.211}
+                    right: {dx: -0.3, dy: 0.015, dz: 0.211}
+
+              - id: action_003
+                name: dual_arm_moveL_to_place
+                label: 动作003：前移
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.2
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                base_key: "1-1-1-1"
+                motion_mode: 2
+                points: ["center"]
+                relative_offset:
+                  # 多动作写法：主程序每次再次运行到本动作时取下一项，超过后循环
+                  - left:  {dx: -0.13, dy: 0.075, dz: 0.201}
+                    right: {dx: -0.13, dy: 0.075, dz: 0.201}
+                  # 继续追加即可，例如：
+                  - left:  {dx: -0.13, dy: 0.015, dz: 0.211}
+                    right: {dx: -0.13, dy: 0.015, dz: 0.211}
+              
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: 0.0, dy: 0.00, dz: -0.005}
+                  right: {dx: 0.0, dy: -0.00, dz: -0.005}
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: 0.0, dy: 0.01, dz: 0.00}
+                    right: {dx: 0.0, dy: -0.02, dz: 0.00}
+                  - left:  {dx: -0.0, dy: 0.01, dz: 0.00}
+                    right: {dx: -0.0, dy: -0.01, dz: 0.00}
+
+
+              - id: action_005
+                name: dual_arm_moveL_to_place
+                label: 动作005：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: -0.06, dy: 0.00, dz: -0.02}
+                    right: {dx: -0.06, dy: -0.00, dz: -0.02}
+                  - left:  {dx: -0.02, dy: 0.00, dz: -0.00}
+                    right: {dx: -0.045, dy: -0.00, dz: -0.01}
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: 0.0, dy: -0.012, dz: 0.00}
+                    right: {dx: 0.0, dy: 0.022, dz: 0.00}
+                  - left:  {dx: -0.0, dy: -0.015, dz: 0.00}
+                    right: {dx: -0.0, dy: 0.01, dz: 0.00}
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: 0.0, dy: 0.00, dz: 0.00}
+                    right: {dx: 0.0, dy: -0.00, dz: 0.00}
+                  - left:  {dx: -0.0, dy: 0.00, dz: 0.015}
+                    right: {dx: -0.0, dy: -0.00, dz: 0.015}
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: 0.02, dy: 0.0145, dz: 0.00}
+                    right: {dx: 0.02, dy: 0.0145, dz: 0.00}
+                  - left:  {dx: 0.015, dy: -0.10, dz: 0.00}
+                    right: {dx: 0.015, dy: -0.102, dz: 0.00}
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: 0.0, dy: 0.00, dz: -0.00}
+                    right: {dx: 0.0, dy: -0.00, dz: -0.00}
+                  - left:  {dx: -0.0, dy: 0.00, dz: -0.02}
+                    right: {dx: -0.0, dy: -0.00, dz: -0.02}
+
+
+              - id: action_006
+                name: dual_arm_moveL_to_place
+                label: 动作006：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.01
+                  acc: 0.01
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: 0.0, dy: 0.02, dz: 0.00}
+                    right: {dx: 0.0, dy: -0.00, dz: 0.00}
+                  - left:  {dx: -0.0, dy: 0.00, dz: -0.00}
+                    right: {dx: -0.0, dy: -0.01, dz: -0.01}
+
+
+              - id: action_008
+                name: dual_arm_moveL_to_place
+                label: 动作008：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: -0.14, dy: 0.00, dz: 0.00}
+                    right: {dx: -0.12, dy: -0.15, dz: 0.00}
+                  - left:  {dx: -0.13, dy: 0.15, dz: 0.00}
+                    right: {dx: -0.14, dy: -0.00, dz: 0.00}
+
+
+              - id: action_hand_001
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.6, 1.2, 0.13, 0.14, 0.14, 0.16,  0.6, 1.2, 0.13, 0.14, 0.14, 0.16]       # 拇指弯曲,拇指摆动,食指,中指,无名指,小指
+
+
+              - id: action_011
+                name: dual_arm_moveL_to_place
+                label: 动作011：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.2
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                base_key: "1-1-1-1"
+                motion_mode: 3
+                points: ["center"]
+                relative_offset:
+                  - left:  {dx: -0.28, dy: 0.06, dz: 0.150, ox: -0.302, oy: 0.363, oz: 0.675, ow: -0.567}
+                  - right:  {dx: -0.28, dy: -0.06, dz: 0.148, ox: -0.302, oy: -0.363, oz: 0.675, ow: 0.567}
+
+
+              - id: action_012
+                name: dual_arm_moveL_to_place
+                label: 动作012：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.2
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                base_key: "1-1-1-1"
+                motion_mode: 3
+                points: ["center"]
+                relative_offset:
+                  - left:  {dx: -0.198, dy: 0.06, dz: 0.150}
+                  - right:  {dx: -0.198, dy: -0.06, dz: 0.15}
+
+
+              - id: action_013
+                name: dual_arm_moveL_to_place
+                label: 动作010：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: 0.04, dy: 0.04, dz: -0.00}
+                  - right: {dx: 0.04, dy:  -0.04, dz: -0.00}
+
+
+              - id: action_013
+                name: dual_arm_moveL_to_place
+                label: 动作010：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.02, dy: -0.00, dz: -0.00}
+                  right: {dx: -0.02, dy:  0.00, dz: -0.00}
+
+
+          - id: behavior_003
+            name: approach_plate
+            label: 行为003：取出料盘
+            description: 左右臂多点轨迹示例
+            actions:
+              - id: action_001
+                name: dual_arm_moveL_to_place
+                label: 动作010：后移
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.2
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                base_key: "1-1-1-1"
+                motion_mode: 3
+                points: ["center"]
+                relative_offset:
+                  - left:  {dx: -0.20, dy: 0.10, dz: 0.180, ox: -0.302, oy: 0.363, oz: 0.675, ow: -0.567}
+                    right:  {dx: -0.22, dy: -0.12, dz: 0.180}
+                  - left:  {dx: -0.22, dy: 0.10, dz: 0.180}
+                    right:  {dx: -0.20, dy: -0.08, dz: 0.180, ox: -0.302, oy: -0.363, oz: 0.675, ow: 0.567}
+
+
+              - id: action_002
+                name: dual_arm_moveL_to_place
+                label: 动作010：后移
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                base_key: "1-1-1-1"
+                motion_mode: 3
+                points: ["center"]
+                relative_offset:
+                -  left:  {dx: -0.141, dy: 0.12, dz: 0.18}
+                -  right:  {dx: -0.141, dy: -0.12, dz: 0.185}
+
+
+              - id: action_003
+                name: dual_arm_moveL_to_place
+                label: 动作002：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                - left:  {dx: -0.00, dy: -0.00, dz: -0.013}
+                - right: {dx: -0.00, dy:  0.00, dz: -0.0135}
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作003：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.01
+                  acc: 0.02
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: -0.11, dy: -0.00, dz: -0.012}
+                  - right: {dx: -0.11, dy:  0.01, dz: -0.011}
+
+
+              - id: action_007
+                name: dual_arm_moveL_to_place
+                label: 动作006：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: 0.02, dy: 0.00, dz: 0.02}
+                  - right: {dx: 0.02, dy:  0.00, dz: 0.02}
+
+
+              - id: action_007
+                name: dual_arm_moveL_to_place
+                label: 动作006：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.8
+                  acc: 0.3
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: 0.00, dy: 0.01, dz: 0.03, ox: -0.031, oy: 0.384, oz: -0.001, ow: -0.923}
+                    right: {dx: 0.00, dy: -0.00, dz: 0.00, ox: 0.045, oy: 0.275, oz: -0.030, ow: -0.960}
+                  - left: {dx: 0.00, dy: -0.00, dz: 0.00, ox: 0.045, oy: -0.275, oz: -0.030, ow: 0.960}
+                    right: {dx: 0.00, dy: 0.00, dz: 0.03, ox: -0.031, oy: -0.384, oz: -0.001, ow: 0.923}
+
+              - id: action_007
+                name: dual_arm_moveL_to_place
+                label: 动作006：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: -0.05, dy: 0.02, dz: 0.00}
+                  - right: {dx: 0.00, dy:  -0.07, dz: 0.00}
+
+
+              - id: action_008
+                name: dual_arm_moveL_to_place
+                label: 动作007：前移
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.6
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                base_key: "1-1-1-1"
+                motion_mode: 3
+                points: ["center"]
+                relative_offset:
+                  - left:  {dx: -0.25, dy: 0.19, dz: 0.147}
+                    right: {dx: -0.22, dy: -0.02, dz: 0.185}
+                  - left:  {dx: -0.22, dy: 0.05, dz: 0.182}
+                    right: {dx: -0.25, dy: -0.19, dz: 0.15}
+
+
+              - id: action_008
+                name: dual_arm_moveL_to_place
+                label: 动作007：前移
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: 0.03, dy: 0.01, dz: 0.0}
+                    right: {dx: 0.03, dy: 0.00, dz: 0.0}
+                  - left:  {dx: 0.03, dy: 0.00, dz: 0.00}
+                    right: {dx: 0.03, dy: 0.01, dz: 0.0}
+
+
+              - id: action_008
+                name: dual_arm_moveL_to_place
+                label: 动作007：前移
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: 0.030, dy: -0.025, dz: 0.00}
+                    right: {dx: 0.030, dy: 0.025, dz: 0.00}
+                  - left:  {dx: 0.03, dy: -0.022, dz: 0.00}
+                    right: {dx: 0.03, dy: 0.035, dz: 0.00}
+
+
+              - id: action_008
+                name: dual_arm_moveL_to_place
+                label: 动作007：前移
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: 0.02, dy: 0.00, dz: 0.00}
+                  right: {dx: 0.02, dy: 0.00, dz: 0.00}
+
+
+              - id: action_hand_002
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.6, 1.2, 0.06, 0.09, 0.14, 0.15,  0.6, 1.2, 0.06, 0.09, 0.14, 0.15]
+
+
+              - id: action_009
+                name: dual_arm_moveL_to_place
+                label: 动作008：前移
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: -0.00, dy: -0.012, dz: 0.00}
+                    right: {dx: -0.00, dy: 0.018, dz: 0.00}
+                  - left:  {dx: -0.00, dy: -0.02, dz: 0.00}
+                    right: {dx: -0.00, dy: 0.025, dz: 0.00}
+
+
+              - id: action_hand_002
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.6, 1.2, 0.12, 0.13, 0.17, 0.18,  0.6, 1.2, 0.12, 0.13, 0.17, 0.18]
+
+
+              - id: action_009
+                name: dual_arm_moveL_to_place
+                label: 动作008：前移
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: -0.005, dy: -0.00, dz: 0.00}
+                    right: {dx: -0.005, dy: 0.00, dz: 0.00}
+                  - left:  {dx: -0.02, dy: 0.000, dz: 0.00}
+                    right: {dx: -0.02, dy: 0.00, dz: 0.00}
+
+
+              - id: action_009
+                name: dual_arm_moveL_to_place
+                label: 动作008：前移
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: -0.00, dy: 0.015, dz: 0.00}
+                    right: {dx: -0.00, dy: -0.02, dz: 0.00}
+                  - left:  {dx: 0.00, dy: 0.02, dz: 0.00}
+                    right: {dx: 0.00, dy: -0.02, dz: 0.00}
+
+
+              - id: action_009
+                name: dual_arm_moveL_to_place
+                label: 动作008：前移
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: 0.005, dy: -0.00, dz: 0.00}
+                    right: {dx: 0.005, dy: 0.00, dz: 0.00}
+                  - left:  {dx: 0.025, dy: 0.000, dz: 0.00}
+                    right: {dx: 0.025, dy: -0.000, dz: 0.00}
+
+
+              - id: action_009
+                name: dual_arm_moveL_to_place
+                label: 动作008：前移
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: -0.00, dy: -0.015, dz: 0.00}
+                    right: {dx: -0.00, dy: 0.02, dz: 0.00}
+                  - left:  {dx: 0.00, dy: -0.02, dz: 0.00}
+                    right: {dx: 0.00, dy: 0.02, dz: 0.00}
+
+
+              - id: action_009
+                name: dual_arm_moveL_to_place
+                label: 动作008：前移
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                relative_offset:
+                  - left:  {dx: -0.09, dy: 0.005, dz: 0.00}
+                    right: {dx: -0.09, dy: 0.005, dz: 0.000}
+                  - left:  {dx: -0.13, dy: 0.052, dz: 0.01}
+                    right: {dx: -0.13, dy: 0.048, dz: 0.01}
+
+
+              - id: action_009
+                name: dual_arm_moveL_to_place
+                label: 动作008：前移
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.1
+                  acc: 0.05
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: 0.00, dy: -0.00, dz: 0.032}
+                    right: {dx: 0.00, dy: -0.00, dz: 0.032}
+                  - left:  {dx: 0.00, dy: -0.00, dz: 0.00}
+                    right: {dx: 0.00, dy: -0.00, dz: 0.00}
+
+
+              - id: action_009
+                name: dual_arm_moveL_to_place
+                label: 动作008：前移
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.1
+                  acc: 0.05
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: -0.05, dy: -0.072, dz: 0.00}
+                    right: {dx: -0.05, dy: -0.068, dz: 0.00}
+                  - left:  {dx: 0.00, dy: 0.00, dz: 0.00}
+                    right: {dx: 0.00, dy: 0.00, dz: 0.00}
+
+
+              - id: action_010
+                name: dual_arm_moveL_to_place
+                label: 动作005：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.12, dy: 0.002, dz: -0.02}
+                  right: {dx: -0.12, dy:  -0.002, dz: -0.02}
+
+
+          - id: behavior_004
+            name: approach_plate
+            label: 行为004：堆放料盘
+            description: 左右臂多点轨迹示例
+            actions:
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [-0.9, 0.5, 0.01]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.05
+                  acc: 0.05
+                  t: 8.0
+                  is_async: false
+                  arm_type: 24
+
+
+              - id: action_002
+                name: dual_arm_moveL_to_place
+                label: 动作002：调整相对位姿
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                base_key: "1-1-1-2"
+                motion_mode: 2
+                points: ["center"]
+                relative_offset:
+                  - left:  {dx: -0.27, dy: 0.01, dz: 0.10}
+                    right: {dx: -0.27, dy: 0.01, dz: 0.10}
+                  - left:  {dx: -0.27, dy: 0.01, dz: 0.115}
+                    right: {dx: -0.27, dy: 0.01, dz: 0.115}
+
+
+              - id: action_04
+                name: dual_arm_moveL_to_place
+                label: 动作005：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.02
+                  acc: 0.02
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.0, dy: 0.05, dz: 0.000}
+                  right: {dx: -0.0, dy:  -0.05, dz: 0.000}
+
+
+              - id: action_04
+                name: dual_arm_moveL_to_place
+                label: 动作005：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.02
+                  acc: 0.02
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  # left:  {dx: -0.0, dy: 0.00, dz: -0.002}
+                  right: {dx: -0.0, dy:  0.00, dz: -0.002}
+
+
+              - id: action_011
+                name: dual_arm_moveL_to_place
+                label: 动作003：手臂两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.1
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  - left:  {dx: 0.03, dy: 0.00, dz: 0.032}
+                  - right: {dx: 0.03, dy: -0.00, dz: 0.032}
+
+
+              - id: action_hand_001
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.6, 1.2, 0, 0.15, 0.15, 0.10,  0.6, 1.2, 0.0, 0.15, 0.15, 0.10]       # 拇指弯曲,拇指摆动,食指,中指,无名指,小指
+
+
+              - id: action_006
+                name: dual_arm_moveL_to_place
+                label: 动作003：手臂两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: 0.1, dy: 0.00, dz: 0.033, ox: 0.0470, oy: 0.168, oz: 0.0309, ow: -0.9846}
+                  right: {dx: 0.1, dy: -0.00, dz: 0.033, ox: 0.0470, oy: -0.168, oz: -0.0309, ow: 0.9846}
+
+
+              - id: action_007
+                name: dual_arm_moveL_to_place
+                label: 动作007：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.00, dy: -0.022, dz: -0.00}
+                  right: {dx: -0.00, dy:  0.022, dz: -0.00}
+
+
+              - id: action_hand_001
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.6, 1.2, 0.14, 0.15, 0.15, 0.15,  0.6, 1.2, 0.14, 0.15, 0.15, 0.15] 
+
+
+              - id: action_008
+                name: dual_arm_moveL_to_place
+                label: 动作003：手臂两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.0, dy: 0.00, dz: 0.02}
+                  right: {dx: -0.0, dy: -0.00, dz: 0.02}
+
+
+              - id: action_009
+                name: dual_arm_moveL_to_place
+                label: 动作003：手臂两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: 0.11, dy: -0.002, dz: 0.00}
+                  right: {dx: 0.11, dy: 0.002, dz: 0.00}
+
+
+              - id: action_010
+                name: dual_arm_moveL_to_place
+                label: 动作003：手臂两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.0, dy: 0.00, dz: -0.015}
+                  right: {dx: -0.0, dy: -0.00, dz: -0.015}
+
+
+              - id: action_011
+                name: dual_arm_moveL_to_place
+                label: 动作003：手臂两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.1
+                  acc: 0.05
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.005, dy: 0.08, dz: 0.002}
+                  right: {dx: -0.005, dy: -0.08, dz: 0.002}
+
+
+              - id: detect_001
+                name: detect_target
+                label: 视觉识别：夹取左右点
+                type: vision
+                key: "1-1-4-1"
+                trigger_value: 2
+                labels: ["tray"]
+                points: ["left", "right"]
+                optional: false
+
+
+              - id: action_011
+                name: dual_arm_moveL_to_place
+                label: 动作003：手臂两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.1
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.0, dy: -0.08, dz: -0.003}
+                  right: {dx: -0.0, dy: 0.08, dz: -0.003}
+
+
+              - id: action_011
+                name: dual_arm_moveL_to_place
+                label: 动作003：手臂两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.0, dy: 0.00, dz: 0.02}
+                  right: {dx: -0.0, dy: 0.00, dz: 0.02}
+
+
+              - id: action_001
+                name: dual_arm_moveL_to_place
+                label: 动作002：调整相对位姿
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                motion_mode: 5
+                point_delta:
+                  left_current:
+                    base_key: "1-1-4-1"   # 左手当前点
+                    points: ["left"]
+                  right_current:
+                    base_key: "1-1-4-1"   # 右手当前点
+                    points: ["right"]
+
+                  left_target:
+                    base_key: "1-1-1-2"   # 左手目标点
+                    points: ["left"]
+                  right_target:
+                    base_key: "1-1-1-2"   # 右手目标点
+                    points: ["right"]
+                skip_if_distance_less_than:
+                  axes: ["x", "y"]
+                  threshold: 0.003
+                relative_offset:
+                  left:  {dz: 0}
+                  right: {dz: 0}
+
+
+              - id: action_011
+                name: dual_arm_moveL_to_place
+                label: 动作003：手臂两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.0, dy: 0.00, dz: -0.015}
+                  right: {dx: -0.0, dy: -0.0, dz: -0.015}
+
+
+              - id: action_011
+                name: dual_arm_moveL_to_place
+                label: 动作003：手臂两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.1
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.0, dy: 0.08, dz: -0.00}
+                  right: {dx: -0.0, dy: -0.08, dz: -0.00}
+
+
+              - id: detect_002
+                name: detect_target
+                label: 视觉识别：夹取左右点
+                type: vision
+                key: "1-1-1-2"
+                trigger_value: 2
+                labels: ["tray"]
+                points: ["left", "right", "center", "top"]
+                optional: true
+
+
+          - id: behavior_005
+            name: approach_plate
+            label: 行为002：料盘放入机器
+            description: 左右臂多点轨迹示例
+            actions:
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [-0.9, 0.5, 0.2]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.05
+                  acc: 0.05
+                  t: 5.0
+                  is_async: false
+                  arm_type: 24
+
+
+              - id: action_011
+                name: dual_arm_moveL_to_place
+                label: 动作003：手臂两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.1
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.1, dy: 0.00, dz: -0.00}
+                  right: {dx: -0.1, dy: 0.00, dz: -0.00}
+
+
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [0.7, 0.5, 0.23]               # 如腰部，按你的机器人维度填
+                joint_sources:
+                  - index: 0
+                    base_key: "1-1-0-1"
+                    point: "yaw_rad"
+                    motion_mode: 4
+                    optional: true
+                motion:
+                  v: 0.5
+                  acc: 0.05
+                  t: 4.0
+                  is_async: false
+                  arm_type: 24
+
+
+  - id: task_003
+    name: plate_pick_task
+    label: 任务003：关门
+
+    locations:
+      - id: loc_001
+        name: pickup_station
+        label: 地点001：取料台
+
+        nav_pose:
+          x: 1.2
+          y: 0.35
+          yaw: 1.57
+
+        behaviors:
+          - id: behavior_001
+            name: approach_plate
+            label: 行为001：靠近门
+            description: 左右臂多点轨迹示例
+
+            actions:
+              - id: action_000
+                name: left_arm_three_point_joint_traj
+                label: 动作001：左臂三点关节轨迹
+                service: /zj_humanoid/upperlimb/movej_by_path/whole_body
+
+                motion:
+                  time: 8.0
+                  timestamp: []
+                  is_async: false
+                  arm_type: 31
+                path:
+                - - [0.8356, 0.0416, 0.4714, -1.0564, -0.0153, -1.0925, 0.0908]
+                  - [0.8356, -0.0416, -0.4714, -1.0564, 0.0153, -1.0925, -0.0908]
+                  - [0.0, 0.0, 0.7, 0.2, 0.15]
+                - - [0.0000, 0.4363, 0.5236, -0.0000, -0.0000, -0.0000, 0.0000]
+                  - [0.0000, -0.4363, -0.5236, 0.0000, 0.0000, 0.0000, 0.0000]
+                  - [0.0, 0.0, 0.7, 0.0, 0.1]
+
+
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [-0.10856509643872414, 0.9000992050141576, 0.8420476179571779, -0.5445104043410766, 0.1642198384479343, 0.14083143633736808, -0.1856321486067404, 1.2, 0.0, 0.1]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.5
+                  acc: 0.05
+                  t: 6.0
+                  is_async: false
+                  arm_type: 25
+
+
+              - id: action_hand_001
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [1.2, 0.3, 0.2, 0.2, 0.2, 0.2,  0.6, 0.2, 0.2, 0.1, 0.1, 0.2]       # 拇指弯曲,拇指摆动,食指,中指,无名指,小指
+
+
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [-0.0581834135346071, 1.2062961598667243, -0.2719220706694614, -0.6633307618434402, 0.9690804054889668, -0.19582918176095943, -0.2868142503641616]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.5
+                  acc: 0.2
+                  t: 4.0
+                  is_async: false
+                  arm_type: 1
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.3
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.15, dy: -0.04, dz: 0.00}
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.3
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: 0.05, dy: 0.05, dz: 0.00}
+
+
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [-0.28499, 1.199692, -0.119842, -0.32296, 0.5552890, -0.211751, -0.8845454]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.5
+                  acc: 0.2
+                  t: 4.0
+                  is_async: false
+                  arm_type: 1
+
+
+              - id: action_hand_001
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.5, -0.0, 1.2, 1.2, 1.2, 1.2, 0.4, 0.1, 0.1, 0.1, 0.1, 0.1] 
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.3
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.03, dy: -0.02, dz: 0.00}
+
+
+              - id: action_000
+                name: left_arm_three_point_joint_traj
+                label: 动作001：左臂三点关节轨迹
+                service: /zj_humanoid/upperlimb/movej_by_path/whole_body
+
+                motion:
+                  time: 5.0
+                  timestamp: []
+                  is_async: false
+                  arm_type: 1
+                path:
+                - - [0.12947756948051392, 0.725177453427932, 0.03791808865571511, -0.9652203464606601, 0.10289655790074903, -0.40161766999033555, -0.764425850413007]               # 如腰部，按你的机器人维度填
+                - - [-0.5591000600679763, 0.5506991181755438, -0.6355594170918266, -0.7766534159386084, 0.053929013574816054, 0.021788508041180026, -0.7040934635783922]               # 如腰部，按你的机器人维度填
+
+
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.3
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: 0.0, dy: 0.2, dz: 0.00}
+
+
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [-1.88529, 0.66271, -2.07659, -0.53158, 0.545138, -0.79930, -1.1471398]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.5
+                  acc: 0.2
+                  t: 8.0
+                  is_async: false
+                  arm_type: 1
+
+
+              - id: action_hand_001
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.6, 0.0, 0.0, 0.0, 0.0, 0.0,  0.6, 0.2, 0.2, 0.1, 0.1, 0.2]       # 拇指弯曲,拇指摆动,食指,中指,无名指,小指
+
+
+              - id: action_000
+                name: left_arm_three_point_joint_traj
+                label: 动作001：左臂三点关节轨迹
+                service: /zj_humanoid/upperlimb/movej_by_path/whole_body
+                
+                motion:
+                  time: 9.0
+                  timestamp: []
+                  is_async: false
+                  arm_type: 25
+                path:
+                - - [-1.8723913828671357, 0.5779152936929677, -1.934182048198636, -0.563175415702699, 0.5266587623464147, -0.43358084458714524, -1.1436546738711135]               # 如腰部，按你的机器人维度填
+                  - [1.2, 0.0, 0.1]
+                - - [-1.035844, 1.05735, -0.73868, -0.82073, 0.873721, 0.026025, -0.787974]               # 如腰部，按你的机器人维度填
+                  - [0.7, 0.0, 0.1]
+                - - [-1.035844, 1.05735, -0.73868, -0.82073, 0.873721, 0.026025, -0.48344]
+                  - [0.7, 0.0, 0.1]
+
+
+
+              - id: action_002
+                name: dual_arm_moveL_to_place
+                label: 动作011：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.2
+                  acc: 0.1
+                  is_async: false
+                # /yolo_vision/wall_angle 的 base_x/base_y/base_z 会缓存为 point=base
+                relative_offset:
+                  left:  {dx: 0.005, dy: -0.00, dz: -0.000}
+
+
+##########
+
+              - id: rotate_002
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [0.7, 0.0, 0.1]               # 如腰部，按你的机器人维度填
+                joint_sources:
+                  - index: 0
+                    base_key: "1-1-0-0"
+                    point: "yaw_rad"
+                    motion_mode: 4
+                    optional: true
+                motion:
+                  v: 0.5
+                  acc: 0.05
+                  t: 2.0
+                  is_async: false
+                  arm_type: 24
+
+
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [0.2096520 , -0.741008, -0.65236, -1.11262, -0.33551, -0.195757, 0.219786]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.5
+                  acc: 0.2
+                  t: 4.0
+                  is_async: false
+                  arm_type: 2
+
+
+              - id: action_hand_001
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.6, 0.0, 0.0, 0.0, 0.0, 0.0,  0.6, -0.3, 1.3, 1.3, 1.2, 1.2]       # 拇指弯曲,拇指摆动,食指,中指,无名指,小指
+
+
+              - id: action_002
+                name: dual_arm_moveL_to_place
+                label: 动作011：手臂后移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.2
+                  acc: 0.1
+                  is_async: false
+                # /yolo_vision/wall_angle 的 base_x/base_y/base_z 会缓存为 point=base
+                base_key: "1-1-0-0"
+                motion_mode: 3
+                points: ["base"]
+                relative_offset:
+                  right:  {dx: -0.2076, dy: -0.01, dz: -0.0350}
+
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.3
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  right:  {dx: 0.055, dy: 0.1, dz: -0.00}
+
+
+              - id: action_004
+                name: dual_arm_moveL_to_place
+                label: 动作004：两侧移动
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.3
+                  acc: 0.1
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                relative_offset:
+                  left:  {dx: -0.1, dy: -0.0, dz: -0.00}
+                  right:  {dx: -0.15, dy: -0.15, dz: -0.00}
+
+
+              - id: action_001
+                name: left_arm_three_point_joint_traj
+                label: 动作001：右臂三点关节轨迹
+                service: /zj_humanoid/upperlimb/movej_by_path/whole_body
+                motion:
+                  time: 5.0
+                  timestamp: []
+                  is_async: false
+                  arm_type: 3
+                path:
+                - - [-1.035844, 1.05735, -0.73868, -0.82073, 0.873721, 0.026025, -0.787974]               # 如腰部，按你的机器人维度填
+                  - [0.3458287877174371, -0.5105759320758807, -0.4464004059218496, -1.2026523561828526, -0.08513593609677628, 0.12812044496398597, -0.26973364435072184]               
+                - - [-0.807736781098356, 1.101458157477282, -0.7253332483560371, -0.9750451940748464, 0.8313576890441254, -0.001921806971099028, -1.0439665066470558]
+                  - [0.0000, -0.436309, -0.52359, -0.0000, -0.0000, -0.0000, 0.0000]
+
+
+              - id: action_001
+                name: left_arm_three_point_joint_traj
+                label: 动作001：右臂三点关节轨迹
+                service: /zj_humanoid/upperlimb/movej_by_path/whole_body
+                motion:
+                  time: 4.0
+                  timestamp: []
+                  is_async: false
+                  arm_type: 1
+                path:
+                - - [-0.29307422821602813, 1.0526703765299317, -0.7279577936833448, -0.5378192518634706, 0.8316333262246189, -0.0018927363257176641, -0.6256467423117156]
+                - - [0.0000, 0.4363, 0.5236, -0.0000, -0.0000, -0.0000, 0.0000]
+
+
+              - id: action_hand_001
+                name: set_hand_and_offset
+                label: 手掌夹住姿态
+                type: hand                               # 标识为手掌动作
+                service: /zj_humanoid/hand/joint_switch/dual
+                offset_id: "tray_1"                      # 指定补偿组 id
+                q: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0,  0.0, 0.0, 0.0, 0.0, 0.0, 0.0]       # 拇指弯曲,拇指摆动,食指,中指,无名指,小指

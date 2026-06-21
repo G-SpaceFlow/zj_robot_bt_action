@@ -1,0 +1,17 @@
+float64 left_dx
+float64 left_dy
+float64 left_dz
+float64 right_dx
+float64 right_dy
+float64 right_dz
+float64 left_ox
+float64 left_oy
+float64 left_oz
+float64 left_ow
+float64 right_ox
+float64 right_oy
+float64 right_oz
+float64 right_ow
+---
+bool success
+string message

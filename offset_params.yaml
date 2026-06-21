@@ -1,0 +1,36 @@
+# offset_params.yaml
+offsets:
+  - id: "tray_1"
+    left_dx: -0.077409
+    left_dy: 0.0227
+    left_dz: 0.14857
+    right_dx: -0.08933
+    right_dy: -0.01212
+    right_dz: 0.15526
+
+    left_ox: 0.0470
+    left_oy: 0.168
+    left_oz: 0.0309
+    left_ow: -0.9846
+    right_ox: 0.0470
+    right_oy: -0.168
+    right_oz: -0.0309
+    right_ow: 0.9846
+
+  - id: "tray_2"
+    left_dx: 0.04
+    left_dy: 0.16
+    left_dz: 0.14
+    right_dx: 0.04
+    right_dy: -0.16
+    right_dz: 0.14
+
+    left_ox: 0.034
+    left_oy: -0.287
+    left_oz: -0.069
+    left_ow: 0.955
+
+    right_ox: 0.034
+    right_oy: 0.287
+    right_oz: -0.069
+    right_ow: -0.955

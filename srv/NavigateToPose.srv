@@ -1,0 +1,25 @@
+float64 x
+float64 y
+float64 yaw
+int32 waypoint_id
+int32 action
+int32 audio
+float64 distance_tolerance
+float64 heading_tolerance
+float64 timeout
+string frame_id
+bool skip_navigation
+bool enable_twice_move
+int32 vision_trigger_value
+int32 vision_stop_value
+string vision_control_topic
+float64 target_x
+float64 target_y
+float64 target_yaw
+float64 vision_target_x
+float64 vision_target_y
+float64 vision_target_yaw
+string twice_move_params_json
+---
+bool success
+string message

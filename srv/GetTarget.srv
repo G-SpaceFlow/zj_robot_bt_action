@@ -1,0 +1,10 @@
+string key
+int32 trigger_value      # 新增：控制发送给视觉的指令值，默认 2
+string[] labels          # 可选：本次希望视觉识别的目标标签
+int32 motion_mode        # 运动模式：1=左右手分别到指定左右点，2=使用单点作为双手中点目标，3=使用单点作为双手目标，4=使用单点计算目标/当前差值，5=左右手分别使用单点目标
+string[] point_names     # 可选：模式1默认[left,right]，模式2默认[center]
+---
+bool success
+string message
+geometry_msgs/Pose left_pose
+geometry_msgs/Pose right_pose

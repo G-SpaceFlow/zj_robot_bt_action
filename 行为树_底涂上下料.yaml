@@ -1,0 +1,186 @@
+﻿---
+version: 1
+name: plate_workflow_tree_demo
+description: "底涂上下料"
+
+tasks:
+  - id: task_001
+    name: plate_pick_task
+    label: 任务001：下料
+
+    locations:
+      - id: loc_001
+        name: pickup_station
+        label: 地点001：取料台
+        behaviors:
+          - id: behavior_001
+            name: approach_plate
+            label: 行为001：靠近门
+            description: 左右臂多点轨迹示例
+
+            actions:
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [0.1]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.5
+                  acc: 0.05
+                  t: 4.0
+                  is_async: false
+                  arm_type: 8
+
+      - id: loc_002
+        name: pickup_station
+        label: 地点002：取料台
+        nav_pose:
+          service: "/bt_navigation_server/navigate_to_pose"
+          x: -2.72655
+          y: 0.51682
+          yaw: -3.13073
+
+
+        behaviors:
+          - id: behavior_001
+            name: approach_plate
+            label: 行为001：靠近门
+            description: 左右臂多点轨迹示例
+
+            actions:
+              - id: move_001
+                name: base_forward
+                label: open_loop_forward
+                type: open_loop_motion
+                motion:
+                  dx: 0.05
+                  linear_speed: 0.1
+                  angular_speed: 0.30
+                  linear_acc: 0.05
+                  angular_acc: 0.35
+
+
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [0.0]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.5
+                  acc: 0.05
+                  t: 4.0
+                  is_async: false
+                  arm_type: 8
+
+
+      - id: loc_003
+        name: pickup_station
+        label: 地点003：取料台
+        twice_move:
+          service: "/bt_navigation_server/navigate_to_pose"
+          enabled: true
+          trigger_value: 4
+          target:
+            x: -2.87143
+            y: 0.52141
+            yaw: -3.12921
+          vision_target:
+            x: 1.0819
+            y: 0.3697
+            yaw: 0.1376
+          params: {}
+
+
+        behaviors:
+          - id: behavior_001
+            name: approach_plate
+            label: 行为001：靠近门
+            description: 左右臂多点轨迹示例
+
+            actions:
+              # - id: move_001
+              #   name: base_forward
+              #   label: open_loop_forward
+              #   type: open_loop_motion
+              #   motion:
+              #     dx: 0.05
+              #     linear_speed: 0.1
+              #     angular_speed: 0.30
+              #     linear_acc: 0.05
+              #     angular_acc: 0.35
+
+
+              # - id: move_002
+              #   name: base_forward
+              #   label: open_loop_forward
+              #   type: open_loop_motion
+              #   motion:
+              #     dx: -0.05
+              #     linear_speed: 0.1
+              #     angular_speed: 0.30
+              #     linear_acc: 0.05
+              #     angular_acc: 0.35
+
+
+  - id: task_002
+    name: plate_pick_task
+    label: 任务002：上料
+
+    locations:
+      - id: loc_001
+        name: pickup_station
+        label: 地点001：上料台
+
+        nav_pose:
+          service: "/bt_navigation_server/navigate_to_pose"
+          x: -2.72347
+          y: 0.54366
+          yaw: -3.09967
+          action: 0
+          twice_move:
+            enabled: true
+            trigger_value: 4
+            target:
+              x: -2.92201
+              y: 0.53900
+              yaw: -3.10391
+            vision_target:
+              x: 0.6585
+              y: 0.0025
+              yaw: 0.0332
+            params: {}
+
+
+        behaviors:
+          - id: behavior_001
+            name: approach_plate
+            label: 行为001：靠近门
+            description: 左右臂多点轨迹示例
+
+            actions:
+              - id: move_001
+                name: base_forward
+                label: open_loop_forward
+                type: open_loop_motion
+                motion:
+                  dx: 0.1
+                  linear_speed: 0.1
+                  angular_speed: 0.30
+                  linear_acc: 0.05
+                  angular_acc: 0.35
+
+
+              - id: move_002
+                name: base_forward
+                label: open_loop_forward
+                type: open_loop_motion
+                motion:
+                  dx: -0.1
+                  linear_speed: 0.1
+                  angular_speed: 0.30
+                  linear_acc: 0.05
+                  angular_acc: 0.35
