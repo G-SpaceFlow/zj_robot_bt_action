@@ -157,6 +157,110 @@ rosrun robot_bt_action control.py
 
 如果要临时验证某一个动作，优先用 `run_bt.py`；如果要让多个行为按固定顺序循环，改 `control.py`。
 
+## 导航服务与二次矫正
+
+`control.py` 和 `run_bt.py` 在执行带 `nav_pose` 或 `twice_move` 的地点前，会等待导航封装服务：
+
+```bash
+rosrun robot_bt_action bt_navigation_server.py
+```
+
+服务启动后应能看到：
+
+```bash
+rosservice list | grep /bt_navigation_server/navigate_to_pose
+```
+
+常用启动顺序：
+
+```bash
+rosrun robot_bt_action bt_navigation_server.py
+rosrun robot_bt_action control.py
+```
+
+`twice_move` 用于地图导航后的底盘二次矫正。典型配置：
+
+```yaml
+twice_move:
+  enabled: true
+  trigger_value: 4
+  target:
+    x: -2.33335
+    y: 0.78240
+    yaw: -3.00037
+  vision_target:
+    x: 0.9868
+    y: 0.0271
+    yaw: -0.0425
+  params: {}
+```
+
+字段含义：
+
+- `target.x/y/yaw`：地图/odom 坐标下的最终目标位姿。
+- `vision_target.x/y`：视觉话题 `/yolo_vision/wall_angle` 中 `base_x/base_y` 的目标值。
+- `vision_target.yaw`：默认不作为最终角度目标；当前角度默认使用 `/zj_humanoid/navigation/odom_info` 的 yaw，并以 `target.yaw` 为目标。
+- `trigger_value`：发送给 `/yolo_vision/control` 的视觉触发值。
+- `params`：覆盖二次矫正节点参数。
+
+二次矫正默认视觉字段：
+
+```yaml
+params:
+  vision_x_field: base_x
+  vision_y_field: base_y
+  vision_yaw_source: odom
+  vision_yaw_target_source: target
+```
+
+当前坐标约定：
+
+- 小车左移时 `base_y` 减小。
+- 小车右移时 `base_y` 增大。
+- odom yaw 逆时针增大，超过 `pi` 后跳到 `-pi`。
+- 普通横向修正默认 `vision_lateral_sign: 1.0`。
+- 特殊横向 nudge 中，`base_y` 偏大时会顺时针转出、后退、回正、前进，用于减小 `base_y`。
+
+视觉丢失处理：
+
+- 进入最终视觉矫正后，视觉短暂丢失会先停住等待。
+- 超过 `vision_lost_hold_timeout`，默认 2 秒后，不再直接失败，而是临时切回地图/odom 运动。
+- 视觉话题恢复后会自动回到最终视觉矫正。
+
+最终对角处理：
+
+- `align_final_yaw` 不只看 yaw。
+- 如果旋转过程中距离又漂出 `position_tolerance`，会回到位置修正阶段，不会只因 yaw 到位就结束。
+
+特殊横向修正常用参数：
+
+```yaml
+params:
+  vision_lateral_nudge_enable: true
+  vision_lateral_nudge_x_gate: 0.02
+  vision_lateral_nudge_y_gate: 0.01
+  vision_lateral_nudge_distance: 0.05
+  vision_lateral_nudge_speed: 0.012
+  vision_lateral_nudge_step_pause: 0.2
+  vision_lateral_nudge_settle_delay: 1.0
+```
+
+参数说明：
+
+- `vision_lateral_nudge_x_gate`：只有前后误差足够小时，才允许进入特殊横向修正；数值越大越容易触发。
+- `vision_lateral_nudge_y_gate`：横向误差超过该值才触发；数值越小越容易触发。
+- `vision_lateral_nudge_distance`：后退距离，前进补偿也使用同一距离。
+- `vision_lateral_nudge_speed`：特殊横向修正前进/后退速度。
+- `vision_lateral_nudge_step_pause`：每一步减速停止后额外等待时间，用于消除底盘惯性。
+- `vision_lateral_nudge_settle_delay`：整套特殊横向修正结束后等待视觉稳定的时间。
+
+调试建议：
+
+- 如果日志中没有 `Start vision lateral nudge`，说明还没进入特殊横向修正，优先检查 `error_x/error_y` 是否满足 gate。
+- 如果已经进入但方向反了，优先检查 `vision_lateral_nudge_turn_sign` 和 `vision_lateral_nudge_yaw_sign` 是否被 ROS 参数覆盖。
+- 修改 `twice_move_corrector.py` 后需要重启 `bt_navigation_server.py`，否则仍会运行旧代码。
+- 可用 `rosparam get /bt_navigation_server/参数名` 检查当前实际参数。
+
 ## 行为树 YAML 基本结构
 
 `行为树.yaml` 的层级是：

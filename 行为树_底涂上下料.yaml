@@ -25,22 +25,22 @@ tasks:
                 service: "/zj_humanoid/upperlimb/movej/whole_body"
                 use_ik: false                          # 关键：关闭 IK
                 joints:                                # 直接提供目标关节角度
-                  - [0.1]               # 如腰部，按你的机器人维度填
+                  - [3,0,0.0]               # 如腰部，按你的机器人维度填
                 motion:
                   v: 0.5
                   acc: 0.05
-                  t: 4.0
+                  t: 8.0
                   is_async: false
-                  arm_type: 8
+                  arm_type: 24
 
       - id: loc_002
         name: pickup_station
         label: 地点002：取料台
         nav_pose:
           service: "/bt_navigation_server/navigate_to_pose"
-          x: -2.72655
-          y: 0.51682
-          yaw: -3.13073
+          x: -2.03324
+          y: 0.81633
+          yaw: -3.00235
 
 
         behaviors:
@@ -50,31 +50,32 @@ tasks:
             description: 左右臂多点轨迹示例
 
             actions:
-              - id: move_001
-                name: base_forward
-                label: open_loop_forward
-                type: open_loop_motion
-                motion:
-                  dx: 0.05
-                  linear_speed: 0.1
-                  angular_speed: 0.30
-                  linear_acc: 0.05
-                  angular_acc: 0.35
-
-
               - id: rotate_001
                 name: move waist
                 label: 转腰
                 service: "/zj_humanoid/upperlimb/movej/whole_body"
                 use_ik: false                          # 关键：关闭 IK
                 joints:                                # 直接提供目标关节角度
-                  - [0.0]               # 如腰部，按你的机器人维度填
+                  - [0, 0, 0.0]               # 如腰部，按你的机器人维度填
                 motion:
                   v: 0.5
                   acc: 0.05
-                  t: 4.0
+                  t: 8.0
                   is_async: false
-                  arm_type: 8
+                  arm_type: 24
+
+
+              - id: move_001
+                name: base_forward
+                label: open_loop_forward
+                type: open_loop_motion
+                motion:
+                  dx: 0.1
+                  linear_speed: 0.1
+                  angular_speed: 0.30
+                  linear_acc: 0.05
+                  angular_acc: 0.35
+
 
 
       - id: loc_003
@@ -85,13 +86,13 @@ tasks:
           enabled: true
           trigger_value: 4
           target:
-            x: -2.87143
-            y: 0.52141
-            yaw: -3.12921
+            x: -2.33335
+            y: 0.78240
+            yaw: -3.00037
           vision_target:
-            x: 1.0819
-            y: 0.3697
-            yaw: 0.1376
+            x: 0.9868
+            y: 0.0271
+            yaw: -0.0425
           params: {}
 
 
@@ -107,7 +108,34 @@ tasks:
               #   label: open_loop_forward
               #   type: open_loop_motion
               #   motion:
-              #     dx: 0.05
+              #     dx: 0.35
+              #     linear_speed: 0.1
+              #     angular_speed: 0.30
+              #     linear_acc: 0.05
+              #     angular_acc: 0.35
+
+
+              # - id: rotate_001
+              #   name: move waist
+              #   label: 转腰
+              #   service: "/zj_humanoid/upperlimb/movej/whole_body"
+              #   use_ik: false                          # 关键：关闭 IK
+              #   joints:                                # 直接提供目标关节角度
+              #     - [0, 0, 0.23]               # 如腰部，按你的机器人维度填
+              #   motion:
+              #     v: 0.5
+              #     acc: 0.05
+              #     t: 6.0
+              #     is_async: false
+              #     arm_type: 24
+
+
+              # - id: move_001
+              #   name: base_forward
+              #   label: open_loop_forward
+              #   type: open_loop_motion
+              #   motion:
+              #     dx: -0.35
               #     linear_speed: 0.1
               #     angular_speed: 0.30
               #     linear_acc: 0.05
@@ -119,7 +147,7 @@ tasks:
               #   label: open_loop_forward
               #   type: open_loop_motion
               #   motion:
-              #     dx: -0.05
+              #     dx: -0.2
               #     linear_speed: 0.1
               #     angular_speed: 0.30
               #     linear_acc: 0.05
@@ -145,13 +173,13 @@ tasks:
             enabled: true
             trigger_value: 4
             target:
-              x: -2.92201
-              y: 0.53900
-              yaw: -3.10391
+              x: -0.64043
+              y: 0.48168
+              yaw: 1.41952
             vision_target:
-              x: 0.6585
-              y: 0.0025
-              yaw: 0.0332
+              x: 1.3555
+              y: 0.1062
+              yaw: 0.1578
             params: {}
 
 

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import math
+import csv
 import json
+import math
+import os
 import time
 
 import rospy
@@ -11,6 +13,10 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Joy
 from std_msgs.msg import Int32, String
 
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PACKAGE_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, os.pardir))
+DEFAULT_DEBUG_LOG_DIR = os.path.join(PACKAGE_DIR, "logs", "twice_move_corrector")
 
 DEFAULT_ODOM_TOPIC = "/zj_humanoid/navigation/odom_info"
 DEFAULT_JOY_CTRL_TOPIC = "/jzhw/joy_ctrl"
@@ -29,6 +35,13 @@ DEFAULT_TARGET_YAW = 1.38934
 
 def clamp(value, min_value, max_value):
     return max(min(value, max_value), min_value)
+
+
+def package_relative_path(path):
+    path = os.path.expanduser(str(path))
+    if os.path.isabs(path):
+        return path
+    return os.path.join(PACKAGE_DIR, path)
 
 
 def approach(value, target, max_delta):
@@ -126,9 +139,12 @@ class TwiceMoveCorrector:
     ALIGN_FINAL_YAW = "align_final_yaw"
     VISION_FINAL_CORRECT = "vision_final_correct"
     VISION_NUDGE_TURN_OUT = "turn_out"
-    VISION_NUDGE_FORWARD = "forward"
+    VISION_NUDGE_BACKWARD = "backward"
     VISION_NUDGE_TURN_BACK = "turn_back"
-    VISION_NUDGE_REVERSE = "reverse"
+    VISION_NUDGE_FORWARD = "forward"
+    VISION_NUDGE_FINAL_ALIGN = "final_align"
+    VISION_NUDGE_DECEL = "decel"
+    VISION_NUDGE_SETTLE = "settle"
 
     def __init__(self):
         self.odom_topic = rospy.get_param("~odom_topic", DEFAULT_ODOM_TOPIC)
@@ -276,6 +292,13 @@ class TwiceMoveCorrector:
             rospy.get_param("~vision_handoff_distance", 0.70)
         )
         self.vision_timeout = float(rospy.get_param("~vision_timeout", 0.5))
+        self.vision_lost_hold_enable = bool(
+            rospy.get_param("~vision_lost_hold_enable", True)
+        )
+        self.vision_lost_hold_timeout = max(
+            self.vision_timeout,
+            float(rospy.get_param("~vision_lost_hold_timeout", 2.0)),
+        )
         self.vision_min_seen_count = int(
             rospy.get_param("~vision_min_seen_count", 3)
         )
@@ -284,23 +307,51 @@ class TwiceMoveCorrector:
             0.0,
             1.0,
         )
+        self.vision_x_field = str(rospy.get_param("~vision_x_field", "base_x"))
+        self.vision_y_field = str(rospy.get_param("~vision_y_field", "base_y"))
+        self.vision_yaw_source = str(
+            rospy.get_param("~vision_yaw_source", "odom")
+        ).lower()
+        self.vision_yaw_field = str(rospy.get_param("~vision_yaw_field", "yaw_rad"))
+        self.vision_fallback_x_field = str(
+            rospy.get_param("~vision_fallback_x_field", "")
+        )
+        self.vision_fallback_y_field = str(
+            rospy.get_param("~vision_fallback_y_field", "")
+        )
+        self.vision_fallback_yaw_field = str(
+            rospy.get_param("~vision_fallback_yaw_field", "yaw_rad")
+        )
         self.vision_target_x = float(
             rospy.get_param("~vision_target_x", 0.9239)
         )
         self.vision_target_y = float(
             rospy.get_param("~vision_target_y", 0.0341)
         )
-        self.vision_target_yaw = float(
+        vision_target_yaw_param = float(
             rospy.get_param("~vision_target_yaw", 0.226)
         )
+        self.vision_yaw_target_source = str(
+            rospy.get_param(
+                "~vision_yaw_target_source",
+                "target" if self.vision_yaw_source == "odom" else "vision",
+            )
+        ).lower()
+        if (
+            self.vision_yaw_source == "odom"
+            and self.vision_yaw_target_source in ("target", "map", "odom")
+        ):
+            self.vision_target_yaw = self.target_yaw
+        else:
+            self.vision_target_yaw = vision_target_yaw_param
         self.vision_x_tolerance = float(
-            rospy.get_param("~vision_x_tolerance", 0.005)
+            rospy.get_param("~vision_x_tolerance", 0.008)
         )
         self.vision_y_tolerance = float(
             rospy.get_param("~vision_y_tolerance", 0.005)
         )
         self.vision_yaw_tolerance = float(
-            rospy.get_param("~vision_yaw_tolerance", 0.01)
+            rospy.get_param("~vision_yaw_tolerance", 0.005)
         )
         self.vision_yaw_slow_zone = float(
             rospy.get_param("~vision_yaw_slow_zone", 0.1047)
@@ -342,7 +393,10 @@ class TwiceMoveCorrector:
         self.vision_lateral_sign = float(
             rospy.get_param("~vision_lateral_sign", 1.0)
         )
-        self.vision_yaw_sign = float(rospy.get_param("~vision_yaw_sign", 1.0))
+        default_vision_yaw_sign = -1.0 if self.vision_yaw_source == "odom" else 1.0
+        self.vision_yaw_sign = float(
+            rospy.get_param("~vision_yaw_sign", default_vision_yaw_sign)
+        )
         self.vision_y_projection_enable = bool(
             rospy.get_param("~vision_y_projection_enable", True)
         )
@@ -385,6 +439,10 @@ class TwiceMoveCorrector:
             self.vision_x_tolerance,
             abs(float(rospy.get_param("~vision_lateral_nudge_x_gate", 0.02))),
         )
+        self.vision_lateral_nudge_y_gate = max(
+            self.vision_y_tolerance,
+            abs(float(rospy.get_param("~vision_lateral_nudge_y_gate", 0.01))),
+        )
         self.vision_lateral_nudge_min_angle = abs(
             float(rospy.get_param("~vision_lateral_nudge_min_angle", 0.025))
         )
@@ -392,25 +450,54 @@ class TwiceMoveCorrector:
             float(rospy.get_param("~vision_lateral_nudge_max_angle", 0.06))
         )
         self.vision_lateral_nudge_angle_kp = abs(
-            float(rospy.get_param("~vision_lateral_nudge_angle_kp", 1.2))
+            float(rospy.get_param("~vision_lateral_nudge_angle_kp", 3.0))
         )
         self.vision_lateral_nudge_angle_tolerance = abs(
             float(
                 rospy.get_param("~vision_lateral_nudge_angle_tolerance", 0.01)
             )
         )
-        self.vision_lateral_nudge_forward_x = abs(
-            float(rospy.get_param("~vision_lateral_nudge_forward_x", 0.015))
+        self.vision_lateral_nudge_distance = abs(
+            float(
+                rospy.get_param(
+                    "~vision_lateral_nudge_distance",
+                    rospy.get_param("~vision_lateral_nudge_forward_x", 0.05),
+                )
+            )
+        )
+        self.vision_lateral_nudge_motion_duration = max(
+            0.0,
+            float(
+                rospy.get_param(
+                    "~vision_lateral_nudge_motion_duration",
+                    0.0,
+                )
+            ),
         )
         self.vision_lateral_nudge_speed = min(
             abs(float(rospy.get_param("~vision_lateral_nudge_speed", 0.012))),
             self.vision_linear_speed,
         )
         self.vision_lateral_nudge_turn_sign = float(
-            rospy.get_param("~vision_lateral_nudge_turn_sign", -1.0)
+            rospy.get_param("~vision_lateral_nudge_turn_sign", 1.0)
         )
+        default_lateral_nudge_yaw_sign = -1.0
         self.vision_lateral_nudge_yaw_sign = float(
-            rospy.get_param("~vision_lateral_nudge_yaw_sign", -1.0)
+            rospy.get_param(
+                "~vision_lateral_nudge_yaw_sign",
+                default_lateral_nudge_yaw_sign,
+            )
+        )
+        self.vision_lateral_nudge_settle_delay = max(
+            0.0,
+            float(rospy.get_param("~vision_lateral_nudge_settle_delay", 1.0)),
+        )
+        self.vision_lateral_nudge_stop_threshold = abs(
+            float(rospy.get_param("~vision_lateral_nudge_stop_threshold", 0.001))
+        )
+        self.vision_lateral_nudge_step_pause = max(
+            0.0,
+            float(rospy.get_param("~vision_lateral_nudge_step_pause", 0.2)),
         )
 
         self.settle_cycles = int(rospy.get_param("~settle_cycles", 5))
@@ -418,7 +505,7 @@ class TwiceMoveCorrector:
             rospy.get_param("~wait_odom_timeout", 10.0)
         )
         self.odom_timeout = float(rospy.get_param("~odom_timeout", 1.0))
-        self.total_timeout = float(rospy.get_param("~total_timeout", 240.0))
+        self.total_timeout = float(rospy.get_param("~total_timeout", 120.0))
 
         self.odom = None
         self.last_odom_time = None
@@ -432,14 +519,42 @@ class TwiceMoveCorrector:
         self.drive_direction = 1.0
         self.vision = None
         self.last_vision_time = None
+        self.vision_lost_since = None
+        self.vision_map_fallback_active = False
         self.vision_seen_count = 0
         self.vision_warned_parse_error = False
         self.stop_requested = False
+        self.debug_log_enabled = bool(
+            rospy.get_param("~debug_log_enabled", False)
+        )
+        self.debug_log_dir = package_relative_path(
+            rospy.get_param("~debug_log_dir", DEFAULT_DEBUG_LOG_DIR)
+        )
+        debug_log_path = str(rospy.get_param("~debug_log_path", ""))
+        self.debug_log_path = (
+            package_relative_path(debug_log_path) if debug_log_path else ""
+        )
+        self.debug_log_hz = max(
+            0.1,
+            float(rospy.get_param("~debug_log_hz", 5.0)),
+        )
+        self.debug_log_interval = 1.0 / self.debug_log_hz
+        self.last_debug_log_time = None
+        self.last_debug_phase = None
+        self.last_debug_nudge_step = None
+        self.debug_log_file = None
+        self.debug_log_writer = None
         self.vision_lateral_nudge_step = None
         self.vision_lateral_nudge_direction = 1.0
         self.vision_lateral_nudge_start_x_error = 0.0
         self.vision_lateral_nudge_start_y_error = 0.0
+        self.vision_lateral_nudge_start_yaw = 0.0
         self.vision_lateral_nudge_target_angle = 0.0
+        self.vision_lateral_nudge_step_started_at = None
+        self.vision_lateral_nudge_decel_stopped_at = None
+        self.vision_lateral_nudge_pending_step = None
+        self.vision_lateral_nudge_pending_message = None
+        self.vision_lateral_nudge_settle_until = None
 
         self.turn_pid = PIDController(
             self.turn_kp,
@@ -518,24 +633,69 @@ class TwiceMoveCorrector:
         )
 
         rospy.on_shutdown(self.release_control)
+        self.open_debug_log()
 
     def odom_callback(self, msg):
         self.odom = msg
         self.last_odom_time = rospy.Time.now()
 
+    def read_vision_float(self, data, field, fallback_field=None):
+        if field in data:
+            return float(data[field]), field
+        if fallback_field and fallback_field in data:
+            rospy.logwarn_throttle(
+                5.0,
+                "Vision field %s missing, fallback to %s",
+                field,
+                fallback_field,
+            )
+            return float(data[fallback_field]), fallback_field
+        raise KeyError(field)
+
+    def current_odom_yaw(self, default=None):
+        if self.odom is None:
+            if default is not None:
+                return default
+            raise RuntimeError("Odometry has not been received")
+        return yaw_from_quaternion(self.odom.pose.pose.orientation)
+
     def vision_callback(self, msg):
         try:
             data = json.loads(msg.data)
+            x, x_field = self.read_vision_float(
+                data,
+                self.vision_x_field,
+                self.vision_fallback_x_field,
+            )
+            y, y_field = self.read_vision_float(
+                data,
+                self.vision_y_field,
+                self.vision_fallback_y_field,
+            )
+            if self.vision_yaw_source == "odom":
+                yaw = self.current_odom_yaw(default=0.0)
+                yaw_field = "odom"
+            else:
+                yaw, yaw_field = self.read_vision_float(
+                    data,
+                    self.vision_yaw_field,
+                    self.vision_fallback_yaw_field,
+                )
             vision = {
-                "x": float(data["base_x"]),
-                "y": float(data["base_y"]),
-                "yaw": float(data["yaw_rad"]),
+                "x": x,
+                "y": y,
+                "yaw": yaw,
+                "x_field": x_field,
+                "y_field": y_field,
+                "yaw_field": yaw_field,
             }
         except (KeyError, TypeError, ValueError) as exc:
             if not self.vision_warned_parse_error:
                 rospy.logwarn("Failed to parse vision pose: %s", exc)
                 self.vision_warned_parse_error = True
             return
+
+        self.vision_warned_parse_error = False
 
         previous_age = self.vision_age()
 
@@ -550,6 +710,9 @@ class TwiceMoveCorrector:
                     self.vision["yaw"]
                     + alpha * wrap_angle(vision["yaw"] - self.vision["yaw"])
                 ),
+                "x_field": vision["x_field"],
+                "y_field": vision["y_field"],
+                "yaw_field": vision["yaw_field"],
             }
 
         self.last_vision_time = rospy.Time.now()
@@ -604,6 +767,26 @@ class TwiceMoveCorrector:
             self.vision_is_fresh()
             and distance <= self.vision_handoff_distance
         )
+
+    def fallback_to_map_correction(self, age, lost_duration=None):
+        self.reset_vision_lateral_nudge()
+        if not self.vision_map_fallback_active:
+            self.vision_map_fallback_active = True
+            if lost_duration is None:
+                rospy.logwarn(
+                    "Vision lost, fallback to map correction. age=%s",
+                    "none" if age is None else "{:.2f}s".format(age),
+                )
+            else:
+                rospy.logwarn(
+                    (
+                        "Vision lost for %.2fs, fallback to map correction "
+                        "until vision recovers. age=%s"
+                    ),
+                    lost_duration,
+                    "none" if age is None else "{:.2f}s".format(age),
+                )
+        self.set_phase(self.ALIGN_TO_PATH)
 
     def select_motion_direction(self, path_heading, yaw):
         forward_error = wrap_angle(path_heading - yaw)
@@ -702,6 +885,7 @@ class TwiceMoveCorrector:
 
     def release_control(self):
         if not hasattr(self, "joy_pub") or self.control_released:
+            self.close_debug_log()
             return
 
         self.control_released = True
@@ -718,10 +902,215 @@ class TwiceMoveCorrector:
                 self.joy_pub.publish(make_joy(0.0, 0.0, enable=False))
                 time.sleep(0.02)
 
+        self.close_debug_log()
+
     def request_stop(self):
         self.stop_requested = True
         self.publish_command(0.0, 0.0, smooth=False)
         self.release_control()
+
+    def open_debug_log(self):
+        if not self.debug_log_enabled:
+            return
+
+        try:
+            if self.debug_log_path:
+                log_path = self.debug_log_path
+                log_dir = os.path.dirname(log_path)
+                if log_dir:
+                    os.makedirs(log_dir, exist_ok=True)
+            else:
+                os.makedirs(self.debug_log_dir, exist_ok=True)
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                log_path = os.path.join(
+                    self.debug_log_dir,
+                    "twice_move_{}.csv".format(timestamp),
+                )
+
+            self.debug_log_file = open(log_path, "w", newline="")
+            self.debug_log_writer = csv.DictWriter(
+                self.debug_log_file,
+                fieldnames=[
+                    "time",
+                    "elapsed",
+                    "dt",
+                    "phase",
+                    "nudge_step",
+                    "nudge_direction",
+                    "nudge_target_angle",
+                    "nudge_settle_remaining",
+                    "odom_x",
+                    "odom_y",
+                    "odom_yaw",
+                    "target_x",
+                    "target_y",
+                    "target_yaw",
+                    "odom_dx",
+                    "odom_dy",
+                    "odom_distance",
+                    "path_heading",
+                    "path_heading_error",
+                    "final_heading_error",
+                    "drive_heading_error",
+                    "drive_direction",
+                    "path_weight",
+                    "final_weight",
+                    "vision_ready",
+                    "vision_age",
+                    "vision_x",
+                    "vision_y",
+                    "vision_yaw",
+                    "vision_target_x",
+                    "vision_target_y",
+                    "vision_target_yaw",
+                    "vision_error_x",
+                    "vision_error_y",
+                    "vision_error_yaw",
+                    "projected_vision_y_error",
+                    "cmd_vx",
+                    "cmd_wz",
+                    "settled_count",
+                ],
+            )
+            self.debug_log_writer.writeheader()
+            rospy.loginfo("Twice move debug log: %s", log_path)
+        except Exception as exc:
+            self.debug_log_enabled = False
+            self.debug_log_file = None
+            self.debug_log_writer = None
+            rospy.logwarn("Failed to open twice_move debug log: %s", exc)
+
+    def close_debug_log(self):
+        if self.debug_log_file is None:
+            return
+        try:
+            self.debug_log_file.flush()
+            self.debug_log_file.close()
+        except Exception as exc:
+            rospy.logwarn("Failed to close twice_move debug log: %s", exc)
+        finally:
+            self.debug_log_file = None
+            self.debug_log_writer = None
+
+    @staticmethod
+    def debug_value(value):
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, (int, float)):
+            if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+                return ""
+            return "{:.6f}".format(float(value))
+        return value
+
+    def log_debug_sample(self,
+                         started_at,
+                         dt,
+                         odom_x,
+                         odom_y,
+                         odom_yaw,
+                         odom_dx,
+                         odom_dy,
+                         odom_distance,
+                         path_heading,
+                         path_heading_error,
+                         final_heading_error,
+                         drive_heading_error,
+                         drive_direction,
+                         path_weight,
+                         final_weight,
+                         vision_ready,
+                         vision_age):
+        if self.debug_log_writer is None:
+            return
+
+        now = rospy.Time.now()
+        should_log = False
+        if self.last_debug_log_time is None:
+            should_log = True
+        elif (now - self.last_debug_log_time).to_sec() >= self.debug_log_interval:
+            should_log = True
+        elif self.phase != self.last_debug_phase:
+            should_log = True
+        elif self.vision_lateral_nudge_step != self.last_debug_nudge_step:
+            should_log = True
+
+        if not should_log:
+            return
+
+        self.last_debug_log_time = now
+        self.last_debug_phase = self.phase
+        self.last_debug_nudge_step = self.vision_lateral_nudge_step
+
+        vision_x = vision_y = vision_yaw = None
+        vision_error_x = vision_error_y = vision_error_yaw = None
+        projected_y_error = None
+        if self.vision is not None:
+            vision_x = self.vision["x"]
+            vision_y = self.vision["y"]
+            vision_yaw = self.vision["yaw"]
+            vision_error_x, vision_error_y, vision_error_yaw = self.vision_errors()
+            projected_y_error = self.projected_vision_y_error(
+                vision_error_x,
+                vision_error_y,
+            )
+
+        settle_remaining = None
+        if self.vision_lateral_nudge_settle_until is not None:
+            settle_remaining = max(
+                0.0,
+                (self.vision_lateral_nudge_settle_until - rospy.Time.now()).to_sec(),
+            )
+
+        row = {
+            "time": now.to_sec(),
+            "elapsed": (now - started_at).to_sec(),
+            "dt": dt,
+            "phase": self.phase,
+            "nudge_step": self.vision_lateral_nudge_step,
+            "nudge_direction": self.vision_lateral_nudge_direction,
+            "nudge_target_angle": self.vision_lateral_nudge_target_angle,
+            "nudge_settle_remaining": settle_remaining,
+            "odom_x": odom_x,
+            "odom_y": odom_y,
+            "odom_yaw": odom_yaw,
+            "target_x": self.target_x,
+            "target_y": self.target_y,
+            "target_yaw": self.target_yaw,
+            "odom_dx": odom_dx,
+            "odom_dy": odom_dy,
+            "odom_distance": odom_distance,
+            "path_heading": path_heading,
+            "path_heading_error": path_heading_error,
+            "final_heading_error": final_heading_error,
+            "drive_heading_error": drive_heading_error,
+            "drive_direction": drive_direction,
+            "path_weight": path_weight,
+            "final_weight": final_weight,
+            "vision_ready": vision_ready,
+            "vision_age": vision_age,
+            "vision_x": vision_x,
+            "vision_y": vision_y,
+            "vision_yaw": vision_yaw,
+            "vision_target_x": self.vision_target_x,
+            "vision_target_y": self.vision_target_y,
+            "vision_target_yaw": self.vision_target_yaw,
+            "vision_error_x": vision_error_x,
+            "vision_error_y": vision_error_y,
+            "vision_error_yaw": vision_error_yaw,
+            "projected_vision_y_error": projected_y_error,
+            "cmd_vx": self.current_vx,
+            "cmd_wz": self.current_wz,
+            "settled_count": self.settled_count,
+        }
+        try:
+            self.debug_log_writer.writerow(
+                {key: self.debug_value(value) for key, value in row.items()}
+            )
+            self.debug_log_file.flush()
+        except Exception as exc:
+            rospy.logwarn_throttle(5.0, "Failed to write twice_move debug log: %s", exc)
 
     def wait_for_odom(self):
         rospy.loginfo("Waiting for odometry: %s", self.odom_topic)
@@ -848,7 +1237,20 @@ class TwiceMoveCorrector:
 
         self.publish_command(turn_correction, direction * forward_speed)
 
-    def align_final_yaw(self, final_heading_error, dt):
+    def align_final_yaw(self, final_heading_error, distance, dt):
+        if distance > self.position_tolerance:
+            rospy.logwarn_throttle(
+                1.0,
+                (
+                    "Final yaw alignment drifted from target: "
+                    "distance=%.4fm tolerance=%.4fm, resume position correction"
+                ),
+                distance,
+                self.position_tolerance,
+            )
+            self.set_phase(self.DRIVE_TO_TARGET)
+            return False
+
         if abs(final_heading_error) <= self.final_heading_tolerance:
             self.settled_count += 1
             self.turn_pid.reset()
@@ -859,11 +1261,19 @@ class TwiceMoveCorrector:
         self.publish_command(self.turn_speed(final_heading_error, dt), 0.0)
         return False
 
+    def vision_yaw_error(self):
+        return wrap_angle(self.vision["yaw"] - self.vision_target_yaw)
+
+    def vision_projection_yaw(self):
+        if self.vision_yaw_source == "odom":
+            return self.vision_yaw_error()
+        return self.vision["yaw"]
+
     def vision_errors(self):
         return (
             self.vision["x"] - self.vision_target_x,
             self.vision["y"] - self.vision_target_y,
-            wrap_angle(self.vision["yaw"] - self.vision_target_yaw),
+            self.vision_yaw_error(),
         )
 
     def projected_vision_y_error(self, error_x, error_y):
@@ -872,7 +1282,7 @@ class TwiceMoveCorrector:
 
         # Project lateral error to the target x using the observed QR/wall angle.
         projection_yaw = clamp(
-            self.vision["yaw"],
+            self.vision_projection_yaw(),
             -self.vision_y_projection_yaw_limit,
             self.vision_y_projection_yaw_limit,
         )
@@ -889,17 +1299,86 @@ class TwiceMoveCorrector:
         self.vision_lateral_nudge_direction = 1.0
         self.vision_lateral_nudge_start_x_error = 0.0
         self.vision_lateral_nudge_start_y_error = 0.0
+        self.vision_lateral_nudge_start_yaw = 0.0
+        self.vision_lateral_nudge_step_started_at = None
+        self.vision_lateral_nudge_decel_stopped_at = None
+        self.vision_lateral_nudge_pending_step = None
+        self.vision_lateral_nudge_pending_message = None
+        self.vision_lateral_nudge_settle_until = None
+
+    def set_vision_lateral_nudge_step(self, step, message=None):
+        self.vision_lateral_nudge_step = step
+        self.vision_lateral_nudge_step_started_at = rospy.Time.now()
+        if message:
+            rospy.loginfo(message)
+
+    def vision_lateral_nudge_step_elapsed(self):
+        if self.vision_lateral_nudge_step_started_at is None:
+            return 0.0
+        return (rospy.Time.now() - self.vision_lateral_nudge_step_started_at).to_sec()
+
+    def vision_lateral_nudge_drive_duration(self):
+        if self.vision_lateral_nudge_motion_duration > 0.0:
+            return self.vision_lateral_nudge_motion_duration
+        speed = max(self.vision_lateral_nudge_speed, 1e-6)
+        return self.vision_lateral_nudge_distance / speed
+
+    def vision_lateral_nudge_is_stopped(self):
+        return (
+            abs(self.current_vx) <= self.vision_lateral_nudge_stop_threshold
+            and abs(self.current_wz) <= self.vision_lateral_nudge_stop_threshold
+        )
+
+    def decel_before_vision_lateral_nudge_step(self, next_step, message=None):
+        self.vision_lateral_nudge_pending_step = next_step
+        self.vision_lateral_nudge_pending_message = message
+        self.set_vision_lateral_nudge_step(
+            self.VISION_NUDGE_DECEL,
+            "Vision lateral nudge: decelerate before {}".format(next_step),
+        )
+
+    def vision_lateral_nudge_decel(self):
+        self.publish_command(0.0, 0.0, smooth=True)
+        if not self.vision_lateral_nudge_is_stopped():
+            self.vision_lateral_nudge_decel_stopped_at = None
+            return False
+
+        now = rospy.Time.now()
+        if self.vision_lateral_nudge_decel_stopped_at is None:
+            self.vision_lateral_nudge_decel_stopped_at = now
+            if self.vision_lateral_nudge_step_pause > 0.0:
+                rospy.loginfo(
+                    "Vision lateral nudge: pause %.2fs before next step",
+                    self.vision_lateral_nudge_step_pause,
+                )
+
+        stopped_duration = (
+            now - self.vision_lateral_nudge_decel_stopped_at
+        ).to_sec()
+        if stopped_duration < self.vision_lateral_nudge_step_pause:
+            self.publish_command(0.0, 0.0, smooth=False)
+            return False
+
+        next_step = self.vision_lateral_nudge_pending_step
+        message = self.vision_lateral_nudge_pending_message
+        self.vision_lateral_nudge_decel_stopped_at = None
+        self.vision_lateral_nudge_pending_step = None
+        self.vision_lateral_nudge_pending_message = None
+        self.vision_yaw_pid.reset()
+        self.set_vision_lateral_nudge_step(next_step, message)
+        return False
 
     def start_vision_lateral_nudge(self, error_x, error_y):
-        self.vision_lateral_nudge_step = self.VISION_NUDGE_TURN_OUT
+        self.set_vision_lateral_nudge_step(self.VISION_NUDGE_TURN_OUT)
+        # For base_y: moving left decreases y and moving right increases y.
+        # Positive y error needs a clockwise turn-out before backing up.
         self.vision_lateral_nudge_direction = math.copysign(
             1.0,
-            self.vision_lateral_sign
-            * self.vision_lateral_nudge_turn_sign
-            * error_y,
+            -self.vision_lateral_nudge_turn_sign * error_y,
         )
         self.vision_lateral_nudge_start_x_error = error_x
         self.vision_lateral_nudge_start_y_error = error_y
+        self.vision_lateral_nudge_start_yaw = self.vision_target_yaw
         self.vision_lateral_nudge_target_angle = clamp(
             abs(error_y) * self.vision_lateral_nudge_angle_kp,
             self.vision_lateral_nudge_min_angle,
@@ -911,11 +1390,12 @@ class TwiceMoveCorrector:
         rospy.loginfo(
             (
                 "Start vision lateral nudge: y_error=%.4f "
-                "direction=%+.0f angle=%.3frad"
+                "direction=%+.0f angle=%.3frad distance=%.3fm"
             ),
             error_y,
             self.vision_lateral_nudge_direction,
             self.vision_lateral_nudge_target_angle,
+            self.vision_lateral_nudge_distance,
         )
 
     def vision_yaw_speed(self, yaw_error, dt):
@@ -932,74 +1412,122 @@ class TwiceMoveCorrector:
 
         direction = self.vision_lateral_nudge_direction
         nudge_yaw = wrap_angle(
-            self.vision_target_yaw
+            self.vision_lateral_nudge_start_yaw
             + direction * self.vision_lateral_nudge_target_angle
         )
+        start_yaw = self.vision_lateral_nudge_start_yaw
         yaw_to_nudge = wrap_angle(nudge_yaw - self.vision["yaw"])
-        yaw_to_target = wrap_angle(
-            self.vision_target_yaw - self.vision["yaw"]
-        )
+        yaw_to_start = wrap_angle(start_yaw - self.vision["yaw"])
+        drive_duration = self.vision_lateral_nudge_drive_duration()
+
+        if self.vision_lateral_nudge_step == self.VISION_NUDGE_DECEL:
+            return self.vision_lateral_nudge_decel()
 
         if self.vision_lateral_nudge_step == self.VISION_NUDGE_TURN_OUT:
             if abs(yaw_to_nudge) <= self.vision_lateral_nudge_angle_tolerance:
-                self.vision_lateral_nudge_step = self.VISION_NUDGE_FORWARD
-                self.vision_yaw_pid.reset()
-                rospy.loginfo("Vision lateral nudge: forward")
+                self.decel_before_vision_lateral_nudge_step(
+                    self.VISION_NUDGE_BACKWARD,
+                    "Vision lateral nudge: backward",
+                )
+                return False
             else:
+                rospy.loginfo_throttle(
+                    0.5,
+                    (
+                        "Vision lateral nudge: turn out "
+                        "yaw_error=%.4frad tolerance=%.4frad"
+                    ),
+                    yaw_to_nudge,
+                    self.vision_lateral_nudge_angle_tolerance,
+                )
                 self.publish_command(
                     self.vision_yaw_speed(yaw_to_nudge, dt),
+                    0.0,
+                )
+                return False
+
+        if self.vision_lateral_nudge_step == self.VISION_NUDGE_BACKWARD:
+            if self.vision_lateral_nudge_step_elapsed() >= drive_duration:
+                self.decel_before_vision_lateral_nudge_step(
+                    self.VISION_NUDGE_TURN_BACK,
+                    "Vision lateral nudge: turn back",
+                )
+                return False
+            else:
+                self.publish_command(
+                    0.0,
+                    -self.vision_linear_sign * self.vision_lateral_nudge_speed,
+                )
+                return False
+
+        if self.vision_lateral_nudge_step == self.VISION_NUDGE_TURN_BACK:
+            if abs(yaw_to_start) <= self.vision_lateral_nudge_angle_tolerance:
+                self.decel_before_vision_lateral_nudge_step(
+                    self.VISION_NUDGE_FORWARD,
+                    "Vision lateral nudge: forward",
+                )
+                return False
+            else:
+                self.publish_command(
+                    self.vision_yaw_speed(yaw_to_start, dt),
                     0.0,
                 )
                 return False
 
         if self.vision_lateral_nudge_step == self.VISION_NUDGE_FORWARD:
-            x_moved = abs(
-                error_x - self.vision_lateral_nudge_start_x_error
-            )
-            y_done = abs(error_y) <= self.vision_y_tolerance
-            y_crossed = (
-                self.vision_lateral_nudge_start_y_error * error_y <= 0.0
-            )
-            if (
-                y_done
-                or y_crossed
-                or x_moved >= self.vision_lateral_nudge_forward_x
-            ):
-                self.vision_lateral_nudge_step = self.VISION_NUDGE_TURN_BACK
-                self.vision_yaw_pid.reset()
-                rospy.loginfo("Vision lateral nudge: turn back")
-            else:
-                self.publish_command(
-                    self.vision_yaw_speed(yaw_to_nudge, dt),
-                    self.vision_linear_sign * self.vision_lateral_nudge_speed,
+            if self.vision_lateral_nudge_step_elapsed() >= drive_duration:
+                self.decel_before_vision_lateral_nudge_step(
+                    self.VISION_NUDGE_FINAL_ALIGN,
+                    "Vision lateral nudge: final align",
                 )
-                return False
-
-        if self.vision_lateral_nudge_step == self.VISION_NUDGE_TURN_BACK:
-            if abs(yaw_to_target) <= self.vision_lateral_nudge_angle_tolerance:
-                self.vision_lateral_nudge_step = self.VISION_NUDGE_REVERSE
-                self.vision_yaw_pid.reset()
-                rospy.loginfo("Vision lateral nudge: reverse")
-            else:
-                self.publish_command(
-                    self.vision_yaw_speed(yaw_to_target, dt),
-                    0.0,
-                )
-                return False
-
-        if self.vision_lateral_nudge_step == self.VISION_NUDGE_REVERSE:
-            if abs(error_x) <= self.vision_lateral_nudge_x_gate:
-                self.reset_vision_lateral_nudge()
-                self.vision_x_pid.reset()
-                self.vision_y_pid.reset()
-                self.vision_yaw_pid.reset()
-                self.publish_command(0.0, 0.0, smooth=True)
                 return False
 
             self.publish_command(
-                self.vision_yaw_speed(yaw_to_target, dt),
-                -self.vision_linear_sign * self.vision_lateral_nudge_speed,
+                0.0,
+                self.vision_linear_sign * self.vision_lateral_nudge_speed,
             )
+            return False
+
+        if self.vision_lateral_nudge_step == self.VISION_NUDGE_FINAL_ALIGN:
+            if abs(yaw_to_start) <= self.vision_lateral_nudge_angle_tolerance:
+                self.decel_before_vision_lateral_nudge_step(
+                    self.VISION_NUDGE_SETTLE,
+                    "Vision lateral nudge: settle",
+                )
+                return False
+
+            self.publish_command(
+                self.vision_yaw_speed(yaw_to_start, dt),
+                0.0,
+            )
+            return False
+
+        if self.vision_lateral_nudge_step == self.VISION_NUDGE_SETTLE:
+            if self.vision_lateral_nudge_settle_until is None:
+                self.vision_lateral_nudge_settle_until = (
+                    rospy.Time.now()
+                    + rospy.Duration(self.vision_lateral_nudge_settle_delay)
+                )
+                self.vision_x_pid.reset()
+                self.vision_y_pid.reset()
+                self.vision_yaw_pid.reset()
+                rospy.loginfo(
+                    "Vision lateral nudge: settle %.2fs before recheck",
+                    self.vision_lateral_nudge_settle_delay,
+                )
+
+            self.publish_command(0.0, 0.0, smooth=False)
+            if (
+                self.vision_lateral_nudge_settle_until is not None
+                and rospy.Time.now() < self.vision_lateral_nudge_settle_until
+            ):
+                return False
+
+            rospy.loginfo("Vision lateral nudge: settle finished, recheck vision pose")
+            self.reset_vision_lateral_nudge()
+            self.vision_x_pid.reset()
+            self.vision_y_pid.reset()
+            self.vision_yaw_pid.reset()
             return False
 
         self.reset_vision_lateral_nudge()
@@ -1008,13 +1536,32 @@ class TwiceMoveCorrector:
     def vision_final_correct(self, dt):
         if not self.vision_is_fresh():
             age = self.vision_age()
-            rospy.logwarn(
-                "Vision lost, fallback to odom correction. age=%s",
-                "none" if age is None else "{:.2f}s".format(age),
-            )
-            self.set_phase(self.DRIVE_TO_TARGET)
+            if self.vision_lost_hold_enable and self.vision is not None:
+                if self.vision_lost_since is None:
+                    self.vision_lost_since = rospy.Time.now()
+                    rospy.logwarn(
+                        "Vision lost in final correction, stop and wait. age=%s",
+                        "none" if age is None else "{:.2f}s".format(age),
+                    )
+
+                lost_duration = (
+                    rospy.Time.now() - self.vision_lost_since
+                ).to_sec()
+                self.reset_vision_lateral_nudge()
+                self.publish_command(0.0, 0.0, smooth=False)
+                if lost_duration <= self.vision_lost_hold_timeout:
+                    return False
+
+                self.fallback_to_map_correction(age, lost_duration)
+                return False
+
+            self.fallback_to_map_correction(age)
             return False
 
+        if self.vision_map_fallback_active:
+            rospy.loginfo("Vision recovered, resume vision final correction")
+            self.vision_map_fallback_active = False
+        self.vision_lost_since = None
         error_x, error_y, error_yaw = self.vision_errors()
         if (
             abs(error_x) <= self.vision_x_tolerance
@@ -1027,16 +1574,29 @@ class TwiceMoveCorrector:
             return self.settled_count >= self.settle_cycles
 
         self.settled_count = 0
-        if (
-            self.vision_lateral_nudge_enable
-            and (
-                self.vision_lateral_nudge_step is not None
-                or (
-                    abs(error_x) <= self.vision_lateral_nudge_x_gate
-                    and abs(error_y) > self.vision_y_tolerance
-                )
-            )
+        should_start_lateral_nudge = (
+            abs(error_x) <= self.vision_lateral_nudge_x_gate
+            and abs(error_y) >= self.vision_lateral_nudge_y_gate
+        )
+        if self.vision_lateral_nudge_enable and (
+            self.vision_lateral_nudge_step is not None
+            or should_start_lateral_nudge
         ):
+            if (
+                self.vision_lateral_nudge_step is None
+                and abs(error_yaw) > self.vision_yaw_tolerance
+            ):
+                self.vision_x_pid.reset()
+                self.vision_y_pid.reset()
+                self.publish_command(
+                    self.vision_yaw_sign * self.vision_yaw_pid.update(
+                        error_yaw,
+                        dt,
+                    ),
+                    0.0,
+                )
+                return False
+
             return self.vision_lateral_nudge_correct(
                 error_x,
                 error_y,
@@ -1168,6 +1728,12 @@ class TwiceMoveCorrector:
             self.speed_level_steps,
         )
         rospy.loginfo(
+            "Debug log: enabled=%s dir=%s hz=%.1f",
+            self.debug_log_enabled,
+            self.debug_log_dir,
+            self.debug_log_hz,
+        )
+        rospy.loginfo(
             (
                 "Velocity limits: linear %.2fm/s (%+d steps), "
                 "angular %.2frad/s (%+d steps), acc=(%.2f, %.2f), "
@@ -1188,13 +1754,25 @@ class TwiceMoveCorrector:
         )
         rospy.loginfo(
             (
-                "Vision final: %s topic=%s handoff=%.2fm timeout=%.2fs "
-                "target=(%.4f, %.4f, %.3f)"
+                "Vision final: %s topic=%s fields=(%s,%s,%s) "
+                "yaw_source=%s yaw_target_source=%s fallback=(%s,%s,%s) "
+                "handoff=%.2fm timeout=%.2fs "
+                "lost_hold=%s/%.2fs target=(%.4f, %.4f, %.3f)"
             ),
             "enabled" if self.enable_vision_final else "disabled",
             self.vision_topic,
+            self.vision_x_field,
+            self.vision_y_field,
+            self.vision_yaw_field,
+            self.vision_yaw_source,
+            self.vision_yaw_target_source,
+            self.vision_fallback_x_field,
+            self.vision_fallback_y_field,
+            self.vision_fallback_yaw_field,
             self.vision_handoff_distance,
             self.vision_timeout,
+            self.vision_lost_hold_enable,
+            self.vision_lost_hold_timeout,
             self.vision_target_x,
             self.vision_target_y,
             self.vision_target_yaw,
@@ -1223,18 +1801,24 @@ class TwiceMoveCorrector:
         rospy.loginfo(
             (
                 "Vision lateral nudge: %s angle=(%.3f..%.3f)rad "
-                "angle_kp=%.2f x_gate=%.3fm forward_x=%.3fm "
-                "speed=%.3fm/s turn_sign=%.1f yaw_sign=%.1f"
+                "angle_kp=%.2f x_gate=%.3fm y_gate=%.3fm distance=%.3fm "
+                "speed=%.3fm/s duration=%.2fs turn_sign=%.1f yaw_sign=%.1f "
+                "step_pause=%.2fs settle_delay=%.2fs stop_threshold=%.4f"
             ),
             "enabled" if self.vision_lateral_nudge_enable else "disabled",
             self.vision_lateral_nudge_min_angle,
             self.vision_lateral_nudge_max_angle,
             self.vision_lateral_nudge_angle_kp,
             self.vision_lateral_nudge_x_gate,
-            self.vision_lateral_nudge_forward_x,
+            self.vision_lateral_nudge_y_gate,
+            self.vision_lateral_nudge_distance,
             self.vision_lateral_nudge_speed,
+            self.vision_lateral_nudge_drive_duration(),
             self.vision_lateral_nudge_turn_sign,
             self.vision_lateral_nudge_yaw_sign,
+            self.vision_lateral_nudge_step_pause,
+            self.vision_lateral_nudge_settle_delay,
+            self.vision_lateral_nudge_stop_threshold,
         )
         rospy.loginfo(
             (
@@ -1286,7 +1870,8 @@ class TwiceMoveCorrector:
                 path_heading,
                 yaw,
             )
-            self.update_motion_direction(drive_direction)
+            if self.phase != self.VISION_FINAL_CORRECT:
+                self.update_motion_direction(drive_direction)
             final_heading_error = wrap_angle(self.target_yaw - yaw)
             drive_heading_error, path_weight, final_weight = (
                 self.blended_drive_heading_error(
@@ -1368,7 +1953,17 @@ class TwiceMoveCorrector:
                     dt,
                 )
             elif self.phase == self.ALIGN_FINAL_YAW:
-                if self.align_final_yaw(final_heading_error, dt):
+                if self.align_final_yaw(final_heading_error, distance, dt):
+                    if self.vision_map_fallback_active:
+                        rospy.logwarn_throttle(
+                            2.0,
+                            (
+                                "Map correction reached target while vision is "
+                                "still lost; waiting for vision to recover"
+                            ),
+                        )
+                        self.publish_command(0.0, 0.0, smooth=False)
+                        continue
                     self.publish_command(0.0, 0.0, smooth=False)
                     rospy.loginfo(
                         "Correction complete: distance=%.4f m, yaw_error=%.3f rad",
@@ -1379,6 +1974,25 @@ class TwiceMoveCorrector:
             else:
                 raise RuntimeError("Unknown phase: {}".format(self.phase))
 
+            self.log_debug_sample(
+                started_at,
+                dt,
+                x,
+                y,
+                yaw,
+                dx,
+                dy,
+                distance,
+                path_heading,
+                path_heading_error,
+                final_heading_error,
+                drive_heading_error,
+                drive_direction,
+                path_weight,
+                final_weight,
+                vision_ready,
+                vision_age,
+            )
             rate.sleep()
 
 
