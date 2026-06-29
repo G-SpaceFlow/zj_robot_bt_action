@@ -1,4 +1,4 @@
-﻿---
+---
 version: 1
 name: plate_workflow_tree_demo
 description: "底涂上下料"
@@ -19,6 +19,22 @@ tasks:
             description: 左右臂多点轨迹示例
 
             actions:
+              - id: move_001
+                name: move upplamb
+                label: 上抬臂
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [-0.0647, 0.4447, 0.2013, -1.5058, 0.1589, 0.2194, 0.0349]               # 如腰部，按你的机器人维度填
+                  - [-0.2119, -0.5150, -0.1064, -1.3701, -0.2678, 0.2119, 0.1442]
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  t: 4.0
+                  is_async: false
+                  arm_type: 3
+
+
               - id: rotate_001
                 name: move waist
                 label: 转腰
@@ -33,14 +49,15 @@ tasks:
                   is_async: false
                   arm_type: 24
 
+
       - id: loc_002
         name: pickup_station
         label: 地点002：取料台
         nav_pose:
           service: "/bt_navigation_server/navigate_to_pose"
-          x: -2.03324
-          y: 0.81633
-          yaw: -3.00235
+          x: -1.95027
+          y: 0.95551
+          yaw: 3.13709
 
 
         behaviors:
@@ -86,101 +103,14 @@ tasks:
           enabled: true
           trigger_value: 4
           target:
-            x: -2.33335
-            y: 0.78240
-            yaw: -3.00037
+            x: -2.15255
+            y: 0.95972
+            yaw: 3.14092
           vision_target:
-            x: 0.9868
-            y: 0.0271
-            yaw: -0.0425
+            x: 1.1284
+            y: 0.3494
+            yaw: 0.1269
           params: {}
-
-
-        behaviors:
-          - id: behavior_001
-            name: approach_plate
-            label: 行为001：靠近门
-            description: 左右臂多点轨迹示例
-
-            actions:
-              # - id: move_001
-              #   name: base_forward
-              #   label: open_loop_forward
-              #   type: open_loop_motion
-              #   motion:
-              #     dx: 0.35
-              #     linear_speed: 0.1
-              #     angular_speed: 0.30
-              #     linear_acc: 0.05
-              #     angular_acc: 0.35
-
-
-              # - id: rotate_001
-              #   name: move waist
-              #   label: 转腰
-              #   service: "/zj_humanoid/upperlimb/movej/whole_body"
-              #   use_ik: false                          # 关键：关闭 IK
-              #   joints:                                # 直接提供目标关节角度
-              #     - [0, 0, 0.23]               # 如腰部，按你的机器人维度填
-              #   motion:
-              #     v: 0.5
-              #     acc: 0.05
-              #     t: 6.0
-              #     is_async: false
-              #     arm_type: 24
-
-
-              # - id: move_001
-              #   name: base_forward
-              #   label: open_loop_forward
-              #   type: open_loop_motion
-              #   motion:
-              #     dx: -0.35
-              #     linear_speed: 0.1
-              #     angular_speed: 0.30
-              #     linear_acc: 0.05
-              #     angular_acc: 0.35
-
-
-              # - id: move_002
-              #   name: base_forward
-              #   label: open_loop_forward
-              #   type: open_loop_motion
-              #   motion:
-              #     dx: -0.2
-              #     linear_speed: 0.1
-              #     angular_speed: 0.30
-              #     linear_acc: 0.05
-              #     angular_acc: 0.35
-
-
-  - id: task_002
-    name: plate_pick_task
-    label: 任务002：上料
-
-    locations:
-      - id: loc_001
-        name: pickup_station
-        label: 地点001：上料台
-
-        nav_pose:
-          service: "/bt_navigation_server/navigate_to_pose"
-          x: -2.72347
-          y: 0.54366
-          yaw: -3.09967
-          action: 0
-          twice_move:
-            enabled: true
-            trigger_value: 4
-            target:
-              x: -0.64043
-              y: 0.48168
-              yaw: 1.41952
-            vision_target:
-              x: 1.3555
-              y: 0.1062
-              yaw: 0.1578
-            params: {}
 
 
         behaviors:
@@ -202,13 +132,419 @@ tasks:
                   angular_acc: 0.35
 
 
+              - id: detect_001
+                name: detect_target
+                label: 视觉识别：横杆偏移量
+                type: vision
+                key: "3-1-1-1"
+                trigger_value: 5
+                points: ["y_offset"]
+                motion_mode: 6
+                optional: false
+
+
+              - id: action_002
+                name: dual_arm_moveL_to_place
+                label: 动作001：调整手相对位姿
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.05
+                  acc: 0.02
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                motion_mode: 6
+                relative_offset:
+                  left: {dx: 0.00, dy: 0.00, dz: 0.00}
+                  right: {dx: 0.00, dy: 0.00, dz: 0.00}
+                  rotate_with_waist: false
+                mode_source:
+                  index: 1
+                  base_key: "3-1-1-1"
+                  points: ["y_offset"]
+                  initial_point: 0.005
+                  hands: ["left", "right"]
+                  skip_if_distance_less_than:
+                    point: "y_offset"
+                    threshold: 0.00
+
+
               - id: move_002
                 name: base_forward
                 label: open_loop_forward
                 type: open_loop_motion
                 motion:
-                  dx: -0.1
+                  dx: 0.25
                   linear_speed: 0.1
                   angular_speed: 0.30
                   linear_acc: 0.05
                   angular_acc: 0.35
+
+
+              - id: move_003
+                name: move upplamb
+                label: 上抬臂
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [-0.0381, 0.3602, 0.1678, -1.3560, 0.0564, -0.0191, 0.07703]               # 如腰部，按你的机器人维度填
+                  - [-0.1269, -0.4612, -0.1278, -1.1559, -0.2163, -0.1885, 0.1382]
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  t: 4.0
+                  is_async: false
+                  arm_type: 3
+
+
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [0, 0, 0.23]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.5
+                  acc: 0.05
+                  t: 6.0
+                  is_async: false
+                  arm_type: 24
+
+
+              - id: move_001
+                name: base_forward
+                label: open_loop_forward
+                type: open_loop_motion
+                motion:
+                  dx: -0.5
+                  linear_speed: 0.1
+                  angular_speed: 0.30
+                  linear_acc: 0.05
+                  angular_acc: 0.35
+
+
+              # - id: move_002
+              #   name: base_forward
+              #   label: open_loop_forward
+              #   type: open_loop_motion
+              #   motion:
+              #     dx: -0.2
+              #     linear_speed: 0.1
+              #     angular_speed: 0.30
+              #     linear_acc: 0.05
+              #     angular_acc: 0.35
+
+
+  - id: task_002
+    name: plate_pick_task
+    label: 任务002：上料
+
+    locations:
+      - id: loc_001
+        name: pickup_station
+        label: 地点001：取料台
+        behaviors:
+          - id: behavior_001
+            name: approach_plate
+            label: 行为001：靠近门
+            description: 左右臂多点轨迹示例
+
+            actions:
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [3, -0.1, 0.1]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.5
+                  acc: 0.05
+                  t: 8.0
+                  is_async: false
+                  arm_type: 24
+
+
+      - id: loc_002
+        name: pickup_station
+        label: 地点002：取料台
+        nav_pose:
+          service: "/bt_navigation_server/navigate_to_pose"
+          x: -1.94170
+          y: 0.40590
+          yaw: 3.13227
+
+
+        behaviors:
+          - id: behavior_001
+            name: approach_plate
+            label: 行为001：靠近门
+            description: 左右臂多点轨迹示例
+
+            actions:
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [0, 0, 0.1]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.5
+                  acc: 0.05
+                  t: 8.0
+                  is_async: false
+                  arm_type: 24
+
+
+              - id: move_001
+                name: base_forward
+                label: open_loop_forward
+                type: open_loop_motion
+                motion:
+                  dx: 0.1
+                  linear_speed: 0.1
+                  angular_speed: 0.30
+                  linear_acc: 0.05
+                  angular_acc: 0.35
+
+
+
+      - id: loc_003
+        name: pickup_station
+        label: 地点003：取料台
+        twice_move:
+          service: "/bt_navigation_server/navigate_to_pose"
+          enabled: true
+          trigger_value: 4
+          target:
+            x: -2.15850
+            y: 0.40786
+            yaw: 3.13227
+          vision_target:
+            x: 1.1708
+            y: -0.1487
+            yaw: 0.1332
+          params: {}
+
+
+        behaviors:
+          - id: behavior_001
+            name: approach_plate
+            label: 行为001：靠近门
+            description: 左右臂多点轨迹示例
+
+            actions:
+              - id: move_001
+                name: base_forward
+                label: open_loop_forward
+                type: open_loop_motion
+                motion:
+                  dx: 0.1
+                  linear_speed: 0.1
+                  angular_speed: 0.30
+                  linear_acc: 0.05
+                  angular_acc: 0.35
+
+
+              - id: action_002
+                name: move upplamb
+                label: 下抬臂
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [-0.0647, 0.4447, 0.2013, -1.5058, 0.1589, 0.2194, 0.0349]               # 如腰部，按你的机器人维度填
+                  - [-0.2119, -0.5150, -0.1064, -1.3701, -0.2678, 0.2119, 0.1442]
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  t: 4.0
+                  is_async: false
+                  arm_type: 3
+
+
+              - id: detect_001
+                name: detect_target
+                label: 视觉识别：横杆偏移量
+                type: vision
+                key: "2-1-1-1"
+                trigger_value: 5
+                points: ["y_offset"]
+                motion_mode: 6
+                optional: false
+
+
+              - id: move_003
+                name: move upplamb
+                label: 上抬臂
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [-0.0381, 0.3602, 0.1678, -1.3560, 0.0564, -0.0191, 0.07703]               # 如腰部，按你的机器人维度填
+                  - [-0.1269, -0.4612, -0.1278, -1.1559, -0.2163, -0.1885, 0.1382]
+                motion:
+                  v: 0.5
+                  acc: 0.1
+                  t: 4.0
+                  is_async: false
+                  arm_type: 3
+
+
+              - id: action_002
+                name: dual_arm_moveL_to_place
+                label: 动作001：调整手相对位姿
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.05
+                  acc: 0.02
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                motion_mode: 6
+                relative_offset:
+                  left: {dx: 0.00, dy: 0.00, dz: 0.00}
+                  right: {dx: 0.00, dy: 0.00, dz: 0.00}
+                  rotate_with_waist: false
+                mode_source:
+                  index: 1
+                  base_key: "3-1-1-1"
+                  points: ["y_offset"]
+                  initial_point: 0.009
+                  hands: ["left", "right"]
+                  skip_if_distance_less_than:
+                    point: "y_offset"
+                    threshold: 0.00
+
+
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [0, 0, 0.23]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.5
+                  acc: 0.05
+                  t: 6.0
+                  is_async: false
+                  arm_type: 24
+
+
+              - id: move_002
+                name: base_forward
+                label: open_loop_forward
+                type: open_loop_motion
+                motion:
+                  dx: 0.25
+                  linear_speed: 0.1
+                  angular_speed: 0.30
+                  linear_acc: 0.05
+                  angular_acc: 0.35
+
+
+              - id: rotate_001
+                name: move waist
+                label: 转腰
+                service: "/zj_humanoid/upperlimb/movej/whole_body"
+                use_ik: false                          # 关键：关闭 IK
+                joints:                                # 直接提供目标关节角度
+                  - [0, 0, 0.03]               # 如腰部，按你的机器人维度填
+                motion:
+                  v: 0.5
+                  acc: 0.05
+                  t: 8.0
+                  is_async: false
+                  arm_type: 24
+
+
+              # - id: move_002
+              #   name: base_forward
+              #   label: open_loop_forward
+              #   type: open_loop_motion
+              #   motion:
+              #     dx: -0.1
+              #     linear_speed: 0.1
+              #     angular_speed: 0.30
+              #     linear_acc: 0.05
+              #     angular_acc: 0.35
+
+
+              # - id: action_002
+              #   name: move upplamb
+              #   label: 下抬臂
+              #   service: "/zj_humanoid/upperlimb/movej/whole_body"
+              #   use_ik: false                          # 关键：关闭 IK
+              #   joints:                                # 直接提供目标关节角度
+              #     - [-0.0647, 0.4447, 0.2013, -1.5058, 0.1589, 0.2194, 0.0349]               # 如腰部，按你的机器人维度填
+              #     - [-0.2119, -0.5150, -0.1064, -1.3701, -0.2678, 0.2119, 0.1442]
+              #   motion:
+              #     v: 0.5
+              #     acc: 0.1
+              #     t: 4.0
+              #     is_async: false
+              #     arm_type: 3
+
+
+              - id: move_002
+                name: base_forward
+                label: open_loop_forward
+                type: open_loop_motion
+                motion:
+                  dx: -0.5
+                  linear_speed: 0.1
+                  angular_speed: 0.30
+                  linear_acc: 0.05
+                  angular_acc: 0.35
+
+
+
+  - id: task_003
+    name: test
+    label: 任务003：测试
+
+    locations:
+      - id: loc_001
+        name: pickup_station
+        label: 地点001：上料台
+
+        behaviors:
+          - id: behavior_001
+            name: approach_plate
+            label: 行为001：靠近门
+            description: 左右臂多点轨迹示例
+
+            actions:
+              - id: detect_001
+                name: detect_target
+                label: 视觉识别：横杆偏移量
+                type: vision
+                key: "3-1-1-1"
+                trigger_value: 5
+                points: ["y_offset"]
+                motion_mode: 6
+                optional: false
+
+
+              - id: action_001
+                name: dual_arm_moveL_to_place
+                label: 动作001：调整手相对位姿
+                service: /zj_humanoid/upperlimb/movel/dual_arm
+                motion:
+                  v: 0.05
+                  acc: 0.02
+                  is_async: false
+                # 使用缓存 key + 相对平移（不重检）
+                motion_mode: 6
+                relative_offset:
+                  left: {dx: 0.00, dy: 0.00, dz: 0.00}
+                  right: {dx: 0.00, dy: 0.00, dz: 0.00}
+                  rotate_with_waist: false
+                mode_source:
+                  index: 1
+                  base_key: "3-1-1-1"
+                  points: ["y_offset"]
+                  initial_point: 0.025
+                  hands: ["left", "right"]
+                  skip_if_distance_less_than:
+                    point: "y_offset"
+                    threshold: 0.006

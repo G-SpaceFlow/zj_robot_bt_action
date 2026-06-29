@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 import csv
@@ -140,7 +140,7 @@ class TwiceMoveCorrector:
     VISION_FINAL_CORRECT = "vision_final_correct"
     VISION_NUDGE_TURN_OUT = "turn_out"
     VISION_NUDGE_BACKWARD = "backward"
-    VISION_NUDGE_TURN_BACK = "turn_back"
+    VISION_NUDGE_TURN_BACK = "turn_opposite"
     VISION_NUDGE_FORWARD = "forward"
     VISION_NUDGE_FINAL_ALIGN = "final_align"
     VISION_NUDGE_DECEL = "decel"
@@ -345,13 +345,13 @@ class TwiceMoveCorrector:
         else:
             self.vision_target_yaw = vision_target_yaw_param
         self.vision_x_tolerance = float(
-            rospy.get_param("~vision_x_tolerance", 0.008)
+            rospy.get_param("~vision_x_tolerance", 0.02)
         )
         self.vision_y_tolerance = float(
-            rospy.get_param("~vision_y_tolerance", 0.005)
+            rospy.get_param("~vision_y_tolerance", 0.02)
         )
         self.vision_yaw_tolerance = float(
-            rospy.get_param("~vision_yaw_tolerance", 0.005)
+            rospy.get_param("~vision_yaw_tolerance", 0.01)
         )
         self.vision_yaw_slow_zone = float(
             rospy.get_param("~vision_yaw_slow_zone", 0.1047)
@@ -361,7 +361,7 @@ class TwiceMoveCorrector:
             self.linear_speed,
         )
         self.vision_angular_speed = min(
-            abs(float(rospy.get_param("~vision_angular_speed", 0.02))),
+            abs(float(rospy.get_param("~vision_angular_speed", 0.03))),
             self.angular_speed,
         )
         self.min_vision_linear_speed = min(
@@ -412,7 +412,7 @@ class TwiceMoveCorrector:
             float(rospy.get_param("~vision_y_projection_yaw_limit", 0.35))
         )
         self.vision_lateral_arc_enable = bool(
-            rospy.get_param("~vision_lateral_arc_enable", True)
+            rospy.get_param("~vision_lateral_arc_enable", False)
         )
         self.vision_lateral_arc_speed = min(
             abs(float(rospy.get_param("~vision_lateral_arc_speed", 0.025))),
@@ -437,20 +437,20 @@ class TwiceMoveCorrector:
         )
         self.vision_lateral_nudge_x_gate = max(
             self.vision_x_tolerance,
-            abs(float(rospy.get_param("~vision_lateral_nudge_x_gate", 0.02))),
+            abs(float(rospy.get_param("~vision_lateral_nudge_x_gate", 0.03))),
         )
         self.vision_lateral_nudge_y_gate = max(
             self.vision_y_tolerance,
             abs(float(rospy.get_param("~vision_lateral_nudge_y_gate", 0.01))),
         )
         self.vision_lateral_nudge_min_angle = abs(
-            float(rospy.get_param("~vision_lateral_nudge_min_angle", 0.025))
+            float(rospy.get_param("~vision_lateral_nudge_min_angle", 0.01))
         )
         self.vision_lateral_nudge_max_angle = abs(
-            float(rospy.get_param("~vision_lateral_nudge_max_angle", 0.06))
+            float(rospy.get_param("~vision_lateral_nudge_max_angle", 0.16))
         )
         self.vision_lateral_nudge_angle_kp = abs(
-            float(rospy.get_param("~vision_lateral_nudge_angle_kp", 3.0))
+            float(rospy.get_param("~vision_lateral_nudge_angle_kp", 5.0))
         )
         self.vision_lateral_nudge_angle_tolerance = abs(
             float(
@@ -461,7 +461,7 @@ class TwiceMoveCorrector:
             float(
                 rospy.get_param(
                     "~vision_lateral_nudge_distance",
-                    rospy.get_param("~vision_lateral_nudge_forward_x", 0.05),
+                    rospy.get_param("~vision_lateral_nudge_forward_x", 0.08),
                 )
             )
         )
@@ -475,18 +475,40 @@ class TwiceMoveCorrector:
             ),
         )
         self.vision_lateral_nudge_speed = min(
-            abs(float(rospy.get_param("~vision_lateral_nudge_speed", 0.012))),
+            abs(float(rospy.get_param("~vision_lateral_nudge_speed", 0.04))),
             self.vision_linear_speed,
         )
         self.vision_lateral_nudge_turn_sign = float(
             rospy.get_param("~vision_lateral_nudge_turn_sign", 1.0)
         )
-        default_lateral_nudge_yaw_sign = -1.0
+        default_lateral_nudge_yaw_sign = 1.0
         self.vision_lateral_nudge_yaw_sign = float(
             rospy.get_param(
                 "~vision_lateral_nudge_yaw_sign",
                 default_lateral_nudge_yaw_sign,
             )
+        )
+        self.vision_lateral_nudge_pre_align_yaw_gate = max(
+            self.vision_yaw_tolerance,
+            abs(float(rospy.get_param("~vision_lateral_nudge_pre_align_yaw_gate", 0.10))),
+        )
+        self.vision_lateral_nudge_pre_align_speed = max(
+            self.min_vision_angular_speed,
+            min(
+                abs(float(rospy.get_param("~vision_lateral_nudge_pre_align_speed", 0.02))),
+                self.vision_angular_speed,
+            ),
+        )
+        self.vision_lateral_micro_x_gate = max(
+            self.vision_lateral_nudge_x_gate,
+            abs(float(rospy.get_param("~vision_lateral_micro_x_gate", 0.10))),
+        )
+        self.vision_lateral_micro_angular_speed = max(
+            self.min_vision_angular_speed,
+            min(
+                abs(float(rospy.get_param("~vision_lateral_micro_angular_speed", 0.02))),
+                self.vision_angular_speed,
+            ),
         )
         self.vision_lateral_nudge_settle_delay = max(
             0.0,
@@ -498,6 +520,19 @@ class TwiceMoveCorrector:
         self.vision_lateral_nudge_step_pause = max(
             0.0,
             float(rospy.get_param("~vision_lateral_nudge_step_pause", 0.2)),
+        )
+        self.vision_lateral_nudge_turn_pause = max(
+            self.vision_lateral_nudge_step_pause,
+            float(rospy.get_param("~vision_lateral_nudge_turn_pause", 0.5)),
+        )
+        default_nudge_turn_timeout = max(
+            8.0,
+            2.0 * self.vision_lateral_nudge_max_angle / max(self.vision_angular_speed, 1e-6)
+            + self.vision_lateral_nudge_turn_pause,
+        )
+        self.vision_lateral_nudge_turn_timeout = max(
+            0.0,
+            float(rospy.get_param("~vision_lateral_nudge_turn_timeout", default_nudge_turn_timeout)),
         )
 
         self.settle_cycles = int(rospy.get_param("~settle_cycles", 5))
@@ -554,6 +589,7 @@ class TwiceMoveCorrector:
         self.vision_lateral_nudge_decel_stopped_at = None
         self.vision_lateral_nudge_pending_step = None
         self.vision_lateral_nudge_pending_message = None
+        self.vision_lateral_nudge_pending_pause = None
         self.vision_lateral_nudge_settle_until = None
 
         self.turn_pid = PIDController(
@@ -1304,6 +1340,7 @@ class TwiceMoveCorrector:
         self.vision_lateral_nudge_decel_stopped_at = None
         self.vision_lateral_nudge_pending_step = None
         self.vision_lateral_nudge_pending_message = None
+        self.vision_lateral_nudge_pending_pause = None
         self.vision_lateral_nudge_settle_until = None
 
     def set_vision_lateral_nudge_step(self, step, message=None):
@@ -1329,9 +1366,10 @@ class TwiceMoveCorrector:
             and abs(self.current_wz) <= self.vision_lateral_nudge_stop_threshold
         )
 
-    def decel_before_vision_lateral_nudge_step(self, next_step, message=None):
+    def decel_before_vision_lateral_nudge_step(self, next_step, message=None, pause=None):
         self.vision_lateral_nudge_pending_step = next_step
         self.vision_lateral_nudge_pending_message = message
+        self.vision_lateral_nudge_pending_pause = pause
         self.set_vision_lateral_nudge_step(
             self.VISION_NUDGE_DECEL,
             "Vision lateral nudge: decelerate before {}".format(next_step),
@@ -1343,19 +1381,23 @@ class TwiceMoveCorrector:
             self.vision_lateral_nudge_decel_stopped_at = None
             return False
 
+        pause = self.vision_lateral_nudge_pending_pause
+        if pause is None:
+            pause = self.vision_lateral_nudge_step_pause
+
         now = rospy.Time.now()
         if self.vision_lateral_nudge_decel_stopped_at is None:
             self.vision_lateral_nudge_decel_stopped_at = now
-            if self.vision_lateral_nudge_step_pause > 0.0:
+            if pause > 0.0:
                 rospy.loginfo(
                     "Vision lateral nudge: pause %.2fs before next step",
-                    self.vision_lateral_nudge_step_pause,
+                    pause,
                 )
 
         stopped_duration = (
             now - self.vision_lateral_nudge_decel_stopped_at
         ).to_sec()
-        if stopped_duration < self.vision_lateral_nudge_step_pause:
+        if stopped_duration < pause:
             self.publish_command(0.0, 0.0, smooth=False)
             return False
 
@@ -1364,6 +1406,7 @@ class TwiceMoveCorrector:
         self.vision_lateral_nudge_decel_stopped_at = None
         self.vision_lateral_nudge_pending_step = None
         self.vision_lateral_nudge_pending_message = None
+        self.vision_lateral_nudge_pending_pause = None
         self.vision_yaw_pid.reset()
         self.set_vision_lateral_nudge_step(next_step, message)
         return False
@@ -1406,6 +1449,20 @@ class TwiceMoveCorrector:
             dt,
         )
 
+    def vision_lateral_nudge_turn_timed_out(self, step_name):
+        if self.vision_lateral_nudge_turn_timeout <= 0.0:
+            return False
+        if self.vision_lateral_nudge_step_elapsed() <= self.vision_lateral_nudge_turn_timeout:
+            return False
+        rospy.logwarn(
+            "Vision lateral nudge: %s timeout %.2fs, abort this nudge and recheck vision",
+            step_name,
+            self.vision_lateral_nudge_turn_timeout,
+        )
+        self.reset_vision_lateral_nudge()
+        self.publish_command(0.0, 0.0, smooth=False)
+        return True
+
     def vision_lateral_nudge_correct(self, error_x, error_y, dt):
         if self.vision_lateral_nudge_step is None:
             self.start_vision_lateral_nudge(error_x, error_y)
@@ -1415,19 +1472,28 @@ class TwiceMoveCorrector:
             self.vision_lateral_nudge_start_yaw
             + direction * self.vision_lateral_nudge_target_angle
         )
+        opposite_yaw = wrap_angle(
+            self.vision_lateral_nudge_start_yaw
+            - direction * self.vision_lateral_nudge_target_angle
+        )
         start_yaw = self.vision_lateral_nudge_start_yaw
-        yaw_to_nudge = wrap_angle(nudge_yaw - self.vision["yaw"])
-        yaw_to_start = wrap_angle(start_yaw - self.vision["yaw"])
+        _, _, current_yaw = self.current_pose()
+        yaw_to_nudge = wrap_angle(nudge_yaw - current_yaw)
+        yaw_to_opposite = wrap_angle(opposite_yaw - current_yaw)
+        yaw_to_start = wrap_angle(start_yaw - current_yaw)
         drive_duration = self.vision_lateral_nudge_drive_duration()
 
         if self.vision_lateral_nudge_step == self.VISION_NUDGE_DECEL:
             return self.vision_lateral_nudge_decel()
 
         if self.vision_lateral_nudge_step == self.VISION_NUDGE_TURN_OUT:
+            if self.vision_lateral_nudge_turn_timed_out("turn_out"):
+                return False
             if abs(yaw_to_nudge) <= self.vision_lateral_nudge_angle_tolerance:
                 self.decel_before_vision_lateral_nudge_step(
                     self.VISION_NUDGE_BACKWARD,
                     "Vision lateral nudge: backward",
+                    pause=self.vision_lateral_nudge_turn_pause,
                 )
                 return False
             else:
@@ -1450,7 +1516,7 @@ class TwiceMoveCorrector:
             if self.vision_lateral_nudge_step_elapsed() >= drive_duration:
                 self.decel_before_vision_lateral_nudge_step(
                     self.VISION_NUDGE_TURN_BACK,
-                    "Vision lateral nudge: turn back",
+                    "Vision lateral nudge: turn opposite",
                 )
                 return False
             else:
@@ -1461,15 +1527,27 @@ class TwiceMoveCorrector:
                 return False
 
         if self.vision_lateral_nudge_step == self.VISION_NUDGE_TURN_BACK:
-            if abs(yaw_to_start) <= self.vision_lateral_nudge_angle_tolerance:
+            if self.vision_lateral_nudge_turn_timed_out("turn_opposite"):
+                return False
+            if abs(yaw_to_opposite) <= self.vision_lateral_nudge_angle_tolerance:
                 self.decel_before_vision_lateral_nudge_step(
                     self.VISION_NUDGE_FORWARD,
                     "Vision lateral nudge: forward",
+                    pause=self.vision_lateral_nudge_turn_pause,
                 )
                 return False
             else:
+                rospy.loginfo_throttle(
+                    0.5,
+                    (
+                        "Vision lateral nudge: turn opposite "
+                        "yaw_error=%.4frad tolerance=%.4frad"
+                    ),
+                    yaw_to_opposite,
+                    self.vision_lateral_nudge_angle_tolerance,
+                )
                 self.publish_command(
-                    self.vision_yaw_speed(yaw_to_start, dt),
+                    self.vision_yaw_speed(yaw_to_opposite, dt),
                     0.0,
                 )
                 return False
@@ -1489,6 +1567,8 @@ class TwiceMoveCorrector:
             return False
 
         if self.vision_lateral_nudge_step == self.VISION_NUDGE_FINAL_ALIGN:
+            if self.vision_lateral_nudge_turn_timed_out("final_align"):
+                return False
             if abs(yaw_to_start) <= self.vision_lateral_nudge_angle_tolerance:
                 self.decel_before_vision_lateral_nudge_step(
                     self.VISION_NUDGE_SETTLE,
@@ -1547,6 +1627,16 @@ class TwiceMoveCorrector:
                 lost_duration = (
                     rospy.Time.now() - self.vision_lost_since
                 ).to_sec()
+                if self.vision_lateral_nudge_step is not None:
+                    rospy.logwarn_throttle(
+                        1.0,
+                        "Vision lost during fixed lateral nudge cycle; continue cycle with odom yaw",
+                    )
+                    return self.vision_lateral_nudge_correct(
+                        self.vision_lateral_nudge_start_x_error,
+                        self.vision_lateral_nudge_start_y_error,
+                        dt,
+                    )
                 self.reset_vision_lateral_nudge()
                 self.publish_command(0.0, 0.0, smooth=False)
                 if lost_duration <= self.vision_lost_hold_timeout:
@@ -1563,6 +1653,14 @@ class TwiceMoveCorrector:
             self.vision_map_fallback_active = False
         self.vision_lost_since = None
         error_x, error_y, error_yaw = self.vision_errors()
+        if self.vision_lateral_nudge_step is not None:
+            self.settled_count = 0
+            return self.vision_lateral_nudge_correct(
+                self.vision_lateral_nudge_start_x_error,
+                self.vision_lateral_nudge_start_y_error,
+                dt,
+            )
+
         if (
             abs(error_x) <= self.vision_x_tolerance
             and abs(error_y) <= self.vision_y_tolerance
@@ -1578,23 +1676,32 @@ class TwiceMoveCorrector:
             abs(error_x) <= self.vision_lateral_nudge_x_gate
             and abs(error_y) >= self.vision_lateral_nudge_y_gate
         )
+
         if self.vision_lateral_nudge_enable and (
             self.vision_lateral_nudge_step is not None
             or should_start_lateral_nudge
         ):
             if (
                 self.vision_lateral_nudge_step is None
-                and abs(error_yaw) > self.vision_yaw_tolerance
+                and abs(error_yaw) > self.vision_lateral_nudge_pre_align_yaw_gate
             ):
                 self.vision_x_pid.reset()
                 self.vision_y_pid.reset()
-                self.publish_command(
-                    self.vision_yaw_sign * self.vision_yaw_pid.update(
-                        error_yaw,
-                        dt,
-                    ),
-                    0.0,
+                pre_align_wz = self.vision_yaw_sign * self.vision_yaw_pid.update(
+                    error_yaw,
+                    dt,
                 )
+                pre_align_wz = clamp(
+                    pre_align_wz,
+                    -self.vision_lateral_nudge_pre_align_speed,
+                    self.vision_lateral_nudge_pre_align_speed,
+                )
+                if 0.0 < abs(pre_align_wz) < self.min_vision_angular_speed:
+                    pre_align_wz = math.copysign(
+                        self.min_vision_angular_speed,
+                        pre_align_wz,
+                    )
+                self.publish_command(pre_align_wz, 0.0)
                 return False
 
             return self.vision_lateral_nudge_correct(
@@ -1613,14 +1720,23 @@ class TwiceMoveCorrector:
                 dt,
             )
 
-        angular_from_y = self.vision_lateral_sign * self.vision_y_pid.update(
-            control_error_y,
-            dt,
-        )
-        angular_from_yaw = self.vision_yaw_sign * self.vision_yaw_pid.update(
-            error_yaw,
-            dt,
-        )
+        if abs(error_y) <= self.vision_y_tolerance:
+            self.vision_y_pid.reset()
+            angular_from_y = 0.0
+        else:
+            angular_from_y = self.vision_lateral_sign * self.vision_y_pid.update(
+                control_error_y,
+                dt,
+            )
+
+        if abs(error_yaw) <= self.vision_yaw_tolerance:
+            self.vision_yaw_pid.reset()
+            angular_from_yaw = 0.0
+        else:
+            angular_from_yaw = self.vision_yaw_sign * self.vision_yaw_pid.update(
+                error_yaw,
+                dt,
+            )
         angular_z = clamp(
             angular_from_y + angular_from_yaw,
             -self.vision_angular_speed,
@@ -1699,6 +1815,17 @@ class TwiceMoveCorrector:
                 angular_z,
                 -slow_angular_limit,
                 slow_angular_limit,
+            )
+
+        if (
+            abs(error_x) <= self.vision_lateral_micro_x_gate
+            and abs(error_y) > self.vision_y_tolerance
+            and self.vision_lateral_nudge_step is None
+        ):
+            angular_z = clamp(
+                angular_z,
+                -self.vision_lateral_micro_angular_speed,
+                self.vision_lateral_micro_angular_speed,
             )
 
         if 0.0 < abs(linear_x) < self.min_vision_linear_speed:
@@ -1803,7 +1930,9 @@ class TwiceMoveCorrector:
                 "Vision lateral nudge: %s angle=(%.3f..%.3f)rad "
                 "angle_kp=%.2f x_gate=%.3fm y_gate=%.3fm distance=%.3fm "
                 "speed=%.3fm/s duration=%.2fs turn_sign=%.1f yaw_sign=%.1f "
-                "step_pause=%.2fs settle_delay=%.2fs stop_threshold=%.4f"
+                "pre_align=(gate %.3frad, speed %.3frad/s) "
+                "micro=(x_gate %.3fm, wz %.3frad/s) "
+                "step_pause=%.2fs turn_pause=%.2fs turn_timeout=%.2fs settle_delay=%.2fs stop_threshold=%.4f"
             ),
             "enabled" if self.vision_lateral_nudge_enable else "disabled",
             self.vision_lateral_nudge_min_angle,
@@ -1816,7 +1945,13 @@ class TwiceMoveCorrector:
             self.vision_lateral_nudge_drive_duration(),
             self.vision_lateral_nudge_turn_sign,
             self.vision_lateral_nudge_yaw_sign,
+            self.vision_lateral_nudge_pre_align_yaw_gate,
+            self.vision_lateral_nudge_pre_align_speed,
+            self.vision_lateral_micro_x_gate,
+            self.vision_lateral_micro_angular_speed,
             self.vision_lateral_nudge_step_pause,
+            self.vision_lateral_nudge_turn_pause,
+            self.vision_lateral_nudge_turn_timeout,
             self.vision_lateral_nudge_settle_delay,
             self.vision_lateral_nudge_stop_threshold,
         )

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 import json
@@ -15,6 +15,7 @@ from robot_bt_action.srv import SetOffset, SetOffsetResponse
 CENTER_CACHE_PREFIX = "__center__:"
 VISION_POINTS_TOPIC = "/yolo_vision/front_points_base_json"
 WALL_ANGLE_TOPIC = "/yolo_vision/wall_angle"
+MODE5_POINTS_TOPIC = "/yolo_vision/mode5_points_json"
 VISION_CONTROL_TOPIC = "/yolo_vision/control"
 TARGET_LABELS_TOPIC = "/yolo_vision/target_labels"
 TRIGGER_DETECT_SERVICE = "/bt_target_server/trigger_detect"
@@ -35,6 +36,7 @@ class TargetServer:
         self.latest_detection = None
         self.latest_front_detection = None
         self.latest_wall_angle = None
+        self.latest_mode5_detection = None
         self.offset_map = {
             "default": self._identity_offset(),
         }                                # 新增：存储offset配置
@@ -42,6 +44,7 @@ class TargetServer:
     def _init_ros_interfaces(self):
         rospy.Subscriber(VISION_POINTS_TOPIC, String, self.vision_cb)
         rospy.Subscriber(WALL_ANGLE_TOPIC, String, self.wall_angle_cb)
+        rospy.Subscriber(MODE5_POINTS_TOPIC, String, self.mode5_points_cb)
         self.control_pub = rospy.Publisher(VISION_CONTROL_TOPIC, Int32, queue_size=1)
         self.label_pub = rospy.Publisher(TARGET_LABELS_TOPIC, String, queue_size=1)
 
@@ -185,6 +188,11 @@ class TargetServer:
         if detection is not None:
             self.latest_wall_angle = detection
 
+    def mode5_points_cb(self, msg):
+        detection = self._parse_json_msg(msg, "mode5 offset JSON")
+        if detection is not None:
+            self.latest_mode5_detection = detection
+
     @staticmethod
     def _parse_json_msg(msg, name):
         try:
@@ -202,6 +210,8 @@ class TargetServer:
     def _reset_latest_for_trigger(self, trigger_val):
         if int(trigger_val) == 3:
             self.latest_wall_angle = None
+        elif int(trigger_val) == 5:
+            self.latest_mode5_detection = None
         else:
             self.latest_front_detection = None
             self.latest_detection = None
@@ -209,6 +219,8 @@ class TargetServer:
     def _latest_for_trigger(self, trigger_val):
         if int(trigger_val) == 3:
             return self.latest_wall_angle
+        if int(trigger_val) == 5:
+            return self.latest_mode5_detection
         return self.latest_front_detection or self.latest_detection
 
     def handle_get_target(self, req):
@@ -274,7 +286,7 @@ class TargetServer:
         motion_mode = self._normalize_motion_mode(req.motion_mode if hasattr(req, "motion_mode") else 1)
         if point_names:
             if motion_mode == 1 and len(point_names) == 1:
-                motion_mode = 4
+                motion_mode = 6 if int(trigger_val) == 5 else 4
                 rospy.logdebug(
                     "触发识别请求为单点 points=%s 且 motion_mode=1，自动按单点模式缓存",
                     point_names,
@@ -371,7 +383,7 @@ class TargetServer:
         point_map = {}
         orig_orient = {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0}
         if isinstance(detection, dict):
-            scalar_names = ["yaw_rad", "yaw_deg"]
+            scalar_names = ["yaw_rad", "yaw_deg", "x_offset", "y_offset", "z_offset"]
             for name in scalar_names:
                 if name not in detection:
                     continue
@@ -456,7 +468,7 @@ class TargetServer:
             return None
 
         offset_id = "default"
-        if motion_mode in (2, 3, 4, 5):
+        if motion_mode in (2, 3, 4, 5, 6):
             names = point_names or ["center"]
             if len(names) != 1:
                 rospy.logerr("运动模式%d需要一个点名，当前=%s", motion_mode, names)

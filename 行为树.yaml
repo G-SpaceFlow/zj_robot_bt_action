@@ -758,6 +758,7 @@ tasks:
                   - left:  {dx: -0.3, dy: 0.015, dz: 0.211}
                     right: {dx: -0.3, dy: 0.015, dz: 0.211}
 
+
               - id: action_003
                 name: dual_arm_moveL_to_place
                 label: 动作003：前移

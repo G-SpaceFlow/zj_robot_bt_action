@@ -51,7 +51,7 @@ def main():
     rospy.on_shutdown(executor.services.cancel_navigation)
 
     def handle_sigint(signum, frame):
-        rospy.logwarn("收到 Ctrl+C，正在取消导航/二次矫正并退出")
+        rospy.logwarn("收到 Ctrl+C，正在取消导航并退出")
         executor.services.cancel_navigation()
         raise SystemExit(130)
 
@@ -67,19 +67,19 @@ def main():
                 {
                     "task_id": "task_001",
                     # "behavior_id": "behavior_001",
-                    # "action_id": "move_001"
+                    # "action_id": "move_002"
                 },
             ],
         },
-        # {
-        #     "name": "放料盘",
-        #     "repeat": 1,
-        #     "steps": [
-        #         {
-        #             "task_id": "task_002",
-        #         },
-        #     ],
-        # },
+        {
+            "name": "放料盘",
+            "repeat": 1,
+            "steps": [
+                {
+                    "task_id": "task_002",
+                },
+            ],
+        },
 
 
     ]

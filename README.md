@@ -239,18 +239,23 @@ params:
   vision_lateral_nudge_enable: true
   vision_lateral_nudge_x_gate: 0.02
   vision_lateral_nudge_y_gate: 0.01
-  vision_lateral_nudge_distance: 0.05
+  vision_lateral_nudge_distance: 0.08
   vision_lateral_nudge_speed: 0.012
   vision_lateral_nudge_step_pause: 0.2
   vision_lateral_nudge_settle_delay: 1.0
 ```
 
+当前特殊横向修正顺序：转出角度 -> 斜向后退 -> 反向转出角度 -> 斜向前进 -> 最终回正 -> 等待视觉稳定。
+
+特殊横向修正按固定周期执行：周期开始后不会再用视觉 x/y/yaw 改动作，只用里程计 yaw 控制旋转，等整套动作结束后再重新读取视觉误差。
+
 参数说明：
 
 - `vision_lateral_nudge_x_gate`：只有前后误差足够小时，才允许进入特殊横向修正；数值越大越容易触发。
 - `vision_lateral_nudge_y_gate`：横向误差超过该值才触发；数值越小越容易触发。
-- `vision_lateral_nudge_distance`：后退距离，前进补偿也使用同一距离。
+- `vision_lateral_nudge_distance`：斜向后退距离，反向出角后的斜向前进也使用同一距离。
 - `vision_lateral_nudge_speed`：特殊横向修正前进/后退速度。
+- `vision_lateral_nudge_turn_pause`：旋转到位后、开始前进/后退前的等待时间，用来等底盘角速度真正停稳。
 - `vision_lateral_nudge_step_pause`：每一步减速停止后额外等待时间，用于消除底盘惯性。
 - `vision_lateral_nudge_settle_delay`：整套特殊横向修正结束后等待视觉稳定的时间。
 
@@ -385,7 +390,56 @@ tasks:
 
 没有 `base_key` 时，`relative_offset` 基于当前左右手末端位姿做偏移。
 
-### 6. 手掌动作
+### 6. 双臂 MoveL 使用视觉标量偏移
+
+适用于视觉只返回一个标量偏移量的场景，例如 `/yolo_vision/mode5_points_json`：
+
+```json
+{"frame_id":"BASE","y_offset":-0.0079,"y_method":"2d"}
+```
+
+先触发视觉并缓存 `y_offset`：
+
+```yaml
+- id: detect_001
+  name: detect_target
+  type: vision
+  key: "3-1-1-1"
+  trigger_value: 5
+  labels: ["tray"]
+  points: ["y_offset"]
+  motion_mode: 6
+```
+
+再用 `motion_mode: 6` 将标量写入手臂相对位移。`index` 表示修改哪个轴：`0=dx`，`1=dy`，`2=dz`。最终修正量为 `y_offset - initial_point`，小于阈值时跳过 MoveL。
+
+```yaml
+- id: action_001
+  name: dual_arm_moveL_to_place
+  service: /zj_humanoid/upperlimb/movel/dual_arm
+  motion:
+    v: 0.5
+    acc: 0.1
+    is_async: false
+  motion_mode: 6
+  relative_offset:
+    left: {dx: 0.00, dy: 0.00, dz: 0.00}
+    right: {dx: 0.00, dy: 0.00, dz: 0.00}
+    rotate_with_waist: false
+  mode_source:
+    index: 1
+    base_key: "3-1-1-1"
+    points: ["y_offset"]
+    initial_point: 0.004
+    hands: ["left", "right"]
+    skip_if_distance_less_than:
+      point: "y_offset"
+      threshold: 0.005
+```
+
+`mode_source.base_key` 必须和前面的视觉动作 `key` 一致。因为该视觉话题声明 `frame_id: BASE`，示例中使用 `rotate_with_waist: false`，避免把 BASE 坐标下的偏移再次按腰部角度旋转。
+
+### 7. 手掌动作
 
 ```yaml
 - id: hand_001
@@ -407,12 +461,13 @@ tasks:
 - `3`：使用单点作为某只手或双手目标，并结合 `relative_offset` 决定左右手偏移。
 - `4`：使用目标点和当前点计算差值，适合视觉纠偏。
 - `5`：左右手分别使用单点目标，适合左/右手各有当前点和目标点的纠偏。
+- `6`：使用 `y_offset` 这类视觉标量作为手臂相对偏移修正，标量通过 `Pose.position.x` 返回。
 
 常用规则：
 
 - `points` 在 YAML 中是数组，例如 `["left", "right"]`。
 - 终端调用服务时也要写成数组元素，不能写成 `['left, right']`。
-- 单点视觉动作如果没有显式写 `motion_mode`，程序会自动按 `motion_mode=4` 缓存。
+- 单点视觉动作如果没有显式写 `motion_mode`，程序会自动按 `motion_mode=4` 缓存；`trigger_value: 5` 会自动按 `motion_mode=6` 缓存。
 
 ## 视觉服务手动调试
 

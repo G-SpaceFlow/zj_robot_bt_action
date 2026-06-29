@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 import os
@@ -933,6 +933,211 @@ class BehaviorTreeExecutor(object):
         return None, None, None, None
 
     @staticmethod
+    def first_mapping(value):
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    return item
+        return None
+
+    @classmethod
+    def read_mode6_source(cls, action, pose_source=None):
+        pose_source = pose_source or {}
+        for owner in (action, pose_source):
+            if not isinstance(owner, dict):
+                continue
+            for key in ("mode_source", "visual_offset_source", "scalar_source"):
+                source = cls.first_mapping(owner.get(key))
+                if source is not None:
+                    return source
+
+        base_key = action.get("base_key", pose_source.get("base_key"))
+        point_names = cls.read_action_point_names(action, pose_source)
+        if base_key or point_names:
+            return {
+                "base_key": base_key,
+                "points": point_names or ["y_offset"],
+            }
+        return None
+
+    @staticmethod
+    def mode6_axis_from_source(source):
+        raw_axis = source.get("axis", source.get("component", source.get("field", source.get("index", 1))))
+        if isinstance(raw_axis, int):
+            index = raw_axis
+        else:
+            raw_text = str(raw_axis).strip().lower()
+            axis_alias = {
+                "0": 0,
+                "x": 0,
+                "dx": 0,
+                "1": 1,
+                "y": 1,
+                "dy": 1,
+                "2": 2,
+                "z": 2,
+                "dz": 2,
+            }
+            if raw_text not in axis_alias:
+                rospy.logerr("motion_mode=6 index/axis 只支持 0/dx、1/dy、2/dz，当前=%s", raw_axis)
+                return None, None
+            index = axis_alias[raw_text]
+        if index not in (0, 1, 2):
+            rospy.logerr("motion_mode=6 index 超出范围: %s", raw_axis)
+            return None, None
+        return index, ("dx", "dy", "dz")[index]
+
+    @staticmethod
+    def mode6_hands_from_source(source):
+        raw_hands = source.get("hands", source.get("apply_to", source.get("hand", source.get("arm", "both"))))
+        if isinstance(raw_hands, str):
+            text = raw_hands.strip().lower()
+            if text in ("both", "all", "dual", "left_right"):
+                return set(["left", "right"])
+            raw_hands = [text]
+        elif raw_hands is None:
+            raw_hands = ["left", "right"]
+
+        hands = set()
+        for hand in raw_hands:
+            name = str(hand).strip().lower()
+            if name in ("left", "left_arm", "l"):
+                hands.add("left")
+            elif name in ("right", "right_arm", "r"):
+                hands.add("right")
+            elif name in ("both", "all", "dual", "left_right"):
+                hands.update(["left", "right"])
+        return hands or set(["left", "right"])
+
+    @staticmethod
+    def read_mode6_skip_threshold(source, action=None, relative_offset=None):
+        for owner in (source, action or {}, relative_offset or {}):
+            if not isinstance(owner, dict):
+                continue
+            config = owner.get(
+                "skip_if_distance_less_than",
+                owner.get("distance_threshold", owner.get("skip_threshold")),
+            )
+            if config is None:
+                continue
+            if isinstance(config, dict):
+                threshold = config.get("threshold", config.get("distance", config.get("value")))
+                if threshold is None:
+                    continue
+                return float(threshold)
+            return float(config)
+        return None
+
+    def apply_relative_offset_from_visual_scalar(
+            self,
+            action,
+            relative_offset,
+            cache_key=None,
+            pose_source=None):
+        source = self.read_mode6_source(action, pose_source)
+        if source is None:
+            rospy.logerr("motion_mode=6 需要配置 mode_source/base_key/points")
+            return None, None
+
+        key = source.get("base_key", source.get("key", source.get("cache_key")))
+        if not key:
+            rospy.logerr("motion_mode=6 mode_source 缺少 base_key/key: %s", source)
+            return None, None
+
+        point_names = self.normalize_point_names(source.get("points", source.get("point_names", [])))
+        if not point_names:
+            point = source.get("point", source.get("field", source.get("name", "y_offset")))
+            point_names = self.normalize_point_names(point)
+        if not point_names:
+            point_names = ["y_offset"]
+
+        motion_mode = self.normalize_motion_mode(source.get("motion_mode", source.get("mode", 6)))
+        scalar_left, scalar_right = self.get_cached_arm_poses(
+            key,
+            point_names=point_names[:1],
+            motion_mode=motion_mode,
+        )
+        if scalar_left is None or scalar_right is None:
+            rospy.logerr("motion_mode=6 获取视觉标量失败 key=%s, point=%s", key, point_names[0])
+            return None, None
+
+        raw_value = float(scalar_left.position.x)
+        initial_point = float(source.get("initial_point", source.get("initial", source.get("zero", 0.0))))
+        correction = raw_value - initial_point
+
+        current_left, current_right = self.get_current_hand_poses(action)
+        if current_left is None or current_right is None:
+            rospy.logerr("获取当前末端位姿失败，无法执行 motion_mode=6")
+            return None, None
+
+        skip_threshold = self.read_mode6_skip_threshold(source, action=action, relative_offset=relative_offset)
+        if skip_threshold is not None and abs(correction) < skip_threshold:
+            action["_skip_motion"] = (
+                "motion_mode=6 {} 修正量 {:.4f}m 小于阈值 {:.4f}m".format(
+                    point_names[0],
+                    correction,
+                    skip_threshold,
+                )
+            )
+            return copy.deepcopy(current_left), copy.deepcopy(current_right)
+
+        axis_index, axis_name = self.mode6_axis_from_source(source)
+        if axis_index is None:
+            return None, None
+
+        left_offset, right_offset = self.parse_relative_offsets(relative_offset)
+        left_values = list(left_offset)
+        right_values = list(right_offset)
+        hands = self.mode6_hands_from_source(source)
+        if "left" in hands:
+            left_values[axis_index] += correction
+        if "right" in hands:
+            right_values[axis_index] += correction
+
+        rotate_with_waist = bool(relative_offset.get("rotate_with_waist", source.get("rotate_with_waist", False)))
+        current_waist = self.get_current_waist_angle()
+        if rotate_with_waist:
+            left_move = self.rotate_xy_offset(left_values, current_waist)
+            right_move = self.rotate_xy_offset(right_values, current_waist)
+        else:
+            left_move = tuple(left_values)
+            right_move = tuple(right_values)
+
+        new_left = copy.deepcopy(current_left)
+        new_right = copy.deepcopy(current_right)
+        new_left.position.x += left_move[0]
+        new_left.position.y += left_move[1]
+        new_left.position.z += left_move[2]
+        new_right.position.x += right_move[0]
+        new_right.position.y += right_move[1]
+        new_right.position.z += right_move[2]
+
+        left_orientation, right_orientation = self.parse_relative_orientations(relative_offset)
+        rotate_orientation = bool(relative_offset.get("rotate_orientation_with_waist", False))
+        orientation_waist = current_waist if rotate_orientation else None
+        self.apply_pose_orientation(new_left, left_orientation, waist_angle=orientation_waist)
+        self.apply_pose_orientation(new_right, right_orientation, waist_angle=orientation_waist)
+
+        if cache_key:
+            self._pose_cache[cache_key] = (new_left, new_right)
+            rospy.logdebug("motion_mode=6 结果已缓存 key=%s", cache_key)
+
+        rospy.loginfo(
+            "motion_mode=6 视觉标量修正 key=%s point=%s raw=%.4f initial=%.4f correction=%.4f axis=%s hands=%s rotate_with_waist=%s",
+            key,
+            point_names[0],
+            raw_value,
+            initial_point,
+            correction,
+            axis_name,
+            sorted(hands),
+            rotate_with_waist,
+        )
+        return new_left, new_right
+
+    @staticmethod
     def target_cache_key(key, point_names=None, motion_mode=1):
         point_names = point_names or []
         if not point_names:
@@ -1169,7 +1374,13 @@ class BehaviorTreeExecutor(object):
         )
         has_motion_mode = "motion_mode" in detect_config or "mode" in detect_config
         motion_mode = self.normalize_motion_mode(detect_config.get("motion_mode", detect_config.get("mode", 1)))
-        if not has_motion_mode and len(point_names) == 1:
+        trigger_value_int = int(trigger_value)
+        if not has_motion_mode and trigger_value_int == 5:
+            motion_mode = 6
+            rospy.logdebug(
+                "视觉动作 trigger_value=5，自动按 motion_mode=6 标量偏移模式缓存",
+            )
+        elif not has_motion_mode and len(point_names) == 1:
             motion_mode = 4
             rospy.logdebug(
                 "视觉动作单点 points=%s 未配置 motion_mode，自动按单点模式缓存",
@@ -1897,7 +2108,7 @@ class BehaviorTreeExecutor(object):
         point_names = self.read_action_point_names(action, pose_source)
         motion_mode = self.read_action_motion_mode(action, pose_source)
 
-        if motion_mode in (4, 5):
+        if motion_mode in (4, 5, 6):
             raw_relative_offset = action.get("relative_offset", pose_source.get("relative_offset", {}))
             if raw_relative_offset is None:
                 relative_offset = {}
@@ -1906,6 +2117,13 @@ class BehaviorTreeExecutor(object):
                 if relative_offset is None:
                     return None, None
             cache_key = pose_source.get("key", action.get("cache_key"))
+            if motion_mode == 6:
+                return self.apply_relative_offset_from_visual_scalar(
+                    action,
+                    relative_offset,
+                    cache_key=cache_key,
+                    pose_source=pose_source,
+                )
             if motion_mode == 5:
                 return self.apply_relative_offset_from_hand_targets(
                     action,

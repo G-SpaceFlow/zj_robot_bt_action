@@ -1,8 +1,8 @@
-string key
-int32 trigger_value      # 新增：控制发送给视觉的指令值，默认 2
-string[] labels          # 可选：本次希望视觉识别的目标标签
-int32 motion_mode        # 运动模式：1=左右手分别到指定左右点，2=使用单点作为双手中点目标，3=使用单点作为双手目标，4=使用单点计算目标/当前差值，5=左右手分别使用单点目标
-string[] point_names     # 可选：模式1默认[left,right]，模式2默认[center]
+﻿string key
+int32 trigger_value      # 发送给视觉的控制值，默认 2
+string[] labels          # 本次希望视觉识别的目标标签，可为空
+int32 motion_mode        # 运动模式：1=左右点，2=单点作为双手中点，3=单点加手臂偏移，4=目标/当前单点差值，5=左右手单点差值，6=视觉标量偏移
+string[] point_names     # 点名；mode6 常用 ["y_offset"]，标量值放在返回 Pose.position.x
 ---
 bool success
 string message
